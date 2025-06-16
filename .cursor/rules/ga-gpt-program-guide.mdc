@@ -1,0 +1,78 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+description: "Core rules for developing a hybrid GPT-Genetic Algorithm (GA) for de novo molecule generation. The main goal is to implement the main iterative workflow in the GA_gpt/ directory, orchestrating existing and new modules."
+globs:
+    "GA_gpt/**/*.py"
+    "operations/**/*.py"
+    "datasets/decompose/demo_frags.py"
+
+Project "FragGPT-GA": Guiding Principles & Development Tasks
+
+1. High-Level Objective
+
+The primary objective is to build a main program that orchestrates a hybrid generative workflow. This workflow uses a Fragment-based GPT model for generating diverse molecular candidates and a Genetic Algorithm (GA) for optimizing these candidates toward high-quality molecules.
+    ·GPT Role: To expand chemical diversity, especially in the early generations.
+    ·GA Role: To perform fine-grained optimization of molecules based on specific fitness criteria (docking score, QED, SA), which is crucial in later generations.
+    ·Target Directory for New Workflow: All new code for the main iterative process must be created within the GA_gpt/ directory.
+
+2. Core Iterative Workflow  
+
+The AI must help implement a main loop that follows these precise steps. The population size should be maintained at approximately 115 molecules per generation.
+    1·Initialization: Start with an initial population of parent molecules (~115).
+    2·Evaluation (Parents): Score the parent population using docking scores, QED, and SA.
+        Docking: Use modules from @operations/docking/.
+        Scoring (QED, SA): Use @operations/scoring/scoring_demo.py.
+    3·Decomposition & Masking: Decompose parent molecules into fragments and apply a mask.
+        Script: @datasets/decompose/demo_frags.py.
+        Task: This script needs to be refactored. See Section 3 for details.
+    4·GPT Generation (Diversity Expansion): Feed the masked fragments into the GPT model to generate a new set of molecules.
+        Script: @fragment_GPT/generate_all.py.
+    5·GA Operations (Optimization): Create a child population by applying crossover and mutation. Both operations should use the pool of (GPT-generated molecules + parent molecules).
+        Crossover: Use @operations/crossover/crossover_demo_finetune.py.
+        Mutation: Use @operations/mutation/mutation_demo_finetune.py.
+        Filtering: Filter the newly generated child population to ensure chemical validity and remove undesirable structures.
+            Script: @operations/filter/filter_demo.py.
+    6·Evaluation (Children): Score the filtered child population using the same metrics as the parents (Docking, QED, SA).
+    7·Selection (Survival of the Fittest): Select ~115 molecules from the combined pool of (parents + children) to form the next generation's parent population.
+        Location for Implementation: @operations/selecting/.
+        Task: This module needs to be implemented. See Section 3 for details.
+    8·Iteration: Repeat the loop for a defined number of generations.
+
+3. Key Development Tasks for AI Assistance
+
+Task A: Implement Flexible Fragment Masking
+·File to Modify: @datasets/decompose/demo_frags.py
+·Current State: The masking logic is hardcoded to always mask the last fragment of a molecule.
+·Required Enhancement: Refactor the masking logic into a function that accepts an integer n as a parameter. This will allow masking the last n fragments (e.g., n=1, n=2, n=3). Make this flexible and easy to call from the main workflow.
+
+Task B: Implement the Selection Module
+·File to Modify/Create: Inside @operations/selecting/
+·Current State: The selection logic is incomplete.
+Required Implementation:
+1.Single-Objective Selection: Implement a function that selects the top-k molecules based solely on their docking scores (where a lower score is better).
+2.Multi-Objective Selection: Implement a Pareto optimization function. This function should identify the non-dominated set of molecules from the combined population based on three objectives:
+    Docking Score (minimize)
+    QED (maximize)
+    SA Score (maximize, assuming higher is better, or adjust if lower is better).
+    The function should return the molecules that lie on the Pareto front.
+
+Task C: Write the Main Workflow Script
+·Location: Create a new main script inside the GA_gpt/ directory.
+·Requirement: This script should implement the entire iterative loop described in Section 2. It must import and call the functionalities from the existing modules (operations, datasets, fragment_GPT). Ensure the data flow between steps is correct (e.g., the output of decomposition is the input for GPT generation).
+
+4. Code Quality & Engineering Standards
+
+·Core Principles: All code must be Modular, Standardized, and Highly Readable. Prioritize clarity and simplicity over cleverness.
+·Unified Configuration: Critical parameters must be centralized for consistency, easy control, and forward compatibility. Haven single configuration file to store variables like population size, file paths, number of generations, etc. Do not hardcode these values directly in the logic.
+·Modularity (500-Line Rule): Any Python file exceeding 500 lines of code should be refactored. Break down complex logic into smaller, reusable functions or move distinct functionalities into separate modules.Encapsulate distinct functionalities into smaller, single-responsibility functions or classes, and move them to separate modules if necessary.
+·No Redundancy (DRY Principle): Actively identify and eliminate redundant code, especially within the @operations/ folder. If similar functions exist in different files, consolidate them into a shared utility module.
+·Meaningful Comments: Comments must explain the "why" behind a design choice or a complex line of code, not just the "what".
+    Good: # We use a deep copy here to prevent modifying the original population list during selection.
+    Bad: # Copy the list.
+·Commenting and Documentation:
+    File Headers: Every Python file must start with a header comment block explaining its overall purpose and its role within the project.Necessary Comments: Comments must explain the "why" behind a design choice or complex logic, not just the "what". Add comments only where they provide genuine value. Avoid cluttering the code with obvious or redundant comments.
+    Docstrings: All public functions, classes, and methods must have clear docstrings in a standard format (e.g., Google Style), explaining their purpose, arguments (Args), and return values (Returns)
+·Environment: The project uses a Python virtual environment named fraggpt. Do not add code that installs new packages. Assume all necessary libraries (like RDKit, PyTorch, etc.) are already installed.
