@@ -11,7 +11,13 @@
     "min_ph": 6.4,
     "max_ph": 8.4,
     "pka_precision": 1.0,
-    "debug_mode": false
+    "debug_mode": false,
+    "mgltools_dir": "mgltools_x86_64Linux2_1.5.6",
+    "mgl_python": "mgltools_x86_64Linux2_1.5.6/bin/pythonsh",
+    "prepare_receptor4.py": "mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_receptor4.py",
+    "prepare_ligand4.py": "mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_ligand4.py",
+    "docking_executable": "autogrow/docking/docking_executables/vina/autodock_vina_1_1_2_linux_x86/bin/vina",
+    "timeout_vs_gtimeout": "timeout"
   },
   "receptors": {
     "default_receptor": {
@@ -139,9 +145,8 @@
     }
   },
   "crossover_finetune": {
-    "crossover_attempts": 50,
+    "crossover_attempts": 100,
     "crossover_rate": 0.8,
-    "log_dir": "output/logs",
     "min_atom_match_mcs": 4,
     "max_time_mcs_prescreen": 1,
     "max_time_mcs_thorough": 1,
@@ -153,12 +158,15 @@
     "merge_attempts": 3
   },
   "mutation_finetune": {
-    "mutation_attempts": 50,
+    "mutation_attempts": 100,
     "max_mutations_per_parent": 2,
     "rxn_library": "all_rxns",
     "max_attempts_multiplier": 50,
     "max_consecutive_failures_multiplier": 2,
-    "enable_progress_bar": true
+    "enable_progress_bar": true,
+    "rxn_library_file": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/All_Rxns_rxn_library.json",
+    "function_group_library": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/All_Rxns_functional_groups.json",
+    "complementary_mol_directory": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/complementary_mol_dir"
   },
   "filter": {
     "enable_lipinski_strict": false,
@@ -171,7 +179,9 @@
     "enable_nih": false,
     "enable_brenk": false,
     "no_filters": false,
-    "alternative_filters": null
+    "alternative_filters": null,
+    "target_diversity": 0.7,
+    "target_exploitation": 0.3
   },
   "molecular_selection": {
     "description": "Parameters for single-objective molecular selection based on docking score.",
@@ -180,12 +190,12 @@
       "Roulette_Selector",
       "Tournament_Selector"
     ],
-    "n_select": 100,
+    "n_select": 120,
     "selector_choice": "Rank_Selector",
     "tourn_size": 0.1
   },
   "selection": {
-    "population_size": 100,
+    "population_size": 120,
     "selection_strategy": "best",
     "n_select_fitness": 50,
     "n_select_diversity": 25,
@@ -208,29 +218,6 @@
     "early_stopping_patience": 3,
     "log_level": "INFO",
     "save_intermediate_results": true,
-    "enable_adaptive_adjustment": true,
-    "target_diversity": 0.7,
-    "target_exploitation": 0.3
-  },
-  "paths": {
-    "project_root": "/data1/ytg/GA_gpt",
-    "temp_dir": "GA_gpt_output/temp",
-    "ligand_dir": "GA_gpt_output/ligands",
-    "sdf_dir": "GA_gpt_output/ligands3D_SDFs",
-    "pdb_dir": "GA_gpt_output/ligands3D_PDBs",
-    "docking_results_dir": "GA_gpt_output/docking_results",
-    "gpt_results_dir": "GA_gpt_output/gpt_results",
-    "ga_results_dir": "GA_gpt_output/ga_results",
-    "selection_results_dir": "GA_gpt_output/selection_results",
-    "filter_results_dir": "GA_gpt_output/filter_results",
-    "mgltools_dir": "/data1/ytg/GA_gpt/mgltools_x86_64Linux2_1.5.6",
-    "mgl_python": "/data1/ytg/GA_gpt/mgltools_x86_64Linux2_1.5.6/bin/pythonsh",
-    "prepare_receptor4.py": "/data1/ytg/GA_gpt/mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_receptor4.py",
-    "prepare_ligand4.py": "/data1/ytg/GA_gpt/mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_ligand4.py",
-    "docking_executable": "/data1/ytg/GA_gpt/autogrow/docking/docking_executables/vina/autodock_vina_1_1_2_linux_x86/bin/vina",
-    "timeout_vs_gtimeout": "timeout",
-    "rxn_library_file": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/All_Rxns_rxn_library.json",
-    "function_group_library": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/All_Rxns_functional_groups.json",
-    "complementary_mol_directory": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/complementary_mol_dir"
+    "enable_adaptive_adjustment": true
   }
 }

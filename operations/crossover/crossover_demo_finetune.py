@@ -13,14 +13,11 @@ import autogrow.operators.crossover.execute_crossover as execute_crossover
 import autogrow.operators.filter.execute_filters as Filter
 
 # 配置日志
-def setup_logging(output_dir):
-    os.makedirs(output_dir, exist_ok=True)
-    log_file = os.path.join(output_dir, "crossover.log")
+def setup_logging():
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file, mode='w'),
             logging.StreamHandler()
         ]
     )
@@ -44,8 +41,7 @@ def main():
         print(f"错误：无法从 {args.config_file} 加载交叉配置: {e}")
         return
     # 设置日志
-    log_dir = crossover_config.get("log_dir", "output/logs")
-    logger = setup_logging(log_dir)
+    logger = setup_logging()
     logger.info("开始交叉操作")    
     # 加载SMILES文件
     all_smiles = []

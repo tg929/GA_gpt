@@ -13,4 +13,6 @@ pdb
 tutorial
 *.pyc
 *.pkl
+output_*/*
+GA_output_*/*
 

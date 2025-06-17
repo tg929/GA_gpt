@@ -34,18 +34,21 @@ class MutationExecutor:
         self.config = config
         self.logger = logger
         self.mutation_config = self.config.get('mutation_finetune', {})
-        paths_config = self.config.get('paths', {})        
-        # 从配置中动态构建反应库路径
+        
+        # 从mutation_finetune配置块中直接读取路径
         rxn_library = self.mutation_config.get('rxn_library', 'all_rxns')
-        rxn_library_file = paths_config.get('rxn_library_file', '')
-        function_group_library = paths_config.get('function_group_library', '')
-        complementary_mol_directory = paths_config.get('complementary_mol_directory', '')       
+        rxn_library_file = self.mutation_config.get('rxn_library_file', '')
+        function_group_library = self.mutation_config.get('function_group_library', '')
+        complementary_mol_directory = self.mutation_config.get('complementary_mol_directory', '')       
+        
+        # 解析为绝对路径
         rxn_library_vars = [
             rxn_library,
-            str(PROJECT_ROOT / rxn_library_file),
-            str(PROJECT_ROOT / function_group_library),
-            str(PROJECT_ROOT / complementary_mol_directory)
+            str(PROJECT_ROOT / rxn_library_file) if rxn_library_file else '',
+            str(PROJECT_ROOT / function_group_library) if function_group_library else '',
+            str(PROJECT_ROOT / complementary_mol_directory) if complementary_mol_directory else ''
         ]        
+        
         self.filter_object_dict = {
             'Structure_check': lambda mol: mol is not None
         }        

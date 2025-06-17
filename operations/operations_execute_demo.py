@@ -24,15 +24,13 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 class GAWorkflowExecutor:
-    """GA工作流执行器"""
-    
+    """GA工作流执行器"""    
     def __init__(self, config_path: str, receptor_name: Optional[str] = None, output_dir_override: Optional[str] = None):
         """
-        初始化GA工作流执行器。
-        
+        初始化GA工作流执行器。        
         Args:
             config_path (str): 配置文件路径。
-            receptor_name (Optional[str]): 目标受体名称。如果为None，则使用默认受体。
+            receptor_name (Optional[str]): 目标受体名称。如果为None,则使用默认受体。
             output_dir_override (Optional[str]): 覆盖配置文件中的输出目录。如果提供，将优先使用此目录。
         """
         self.config_path = config_path
@@ -64,8 +62,8 @@ class GAWorkflowExecutor:
             logger.info("未指定受体，将在默认目录中创建输出。")
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.logs_dir = self.output_dir / "logs"
-        self.logs_dir.mkdir(exist_ok=True)
+        
+        self._save_run_parameters()
         
         logger.info(f"GA工作流初始化完成, 输出目录: {self.output_dir}")
         logger.info(f"最大迭代代数: {self.max_generations}")
@@ -78,12 +76,31 @@ class GAWorkflowExecutor:
             logger.error(f"无法加载配置文件 {self.config_path}: {e}")
             raise
     
+    def _save_run_parameters(self):
+        """将本次运行使用的所有参数保存到vars.json,以便于追踪和复现。"""
+        # 创建一个字典来存储所有参数
+        run_params = {
+            "config_file_content": self.config,
+            "runtime_parameters": {
+                "receptor_name": self.receptor_name or "default",
+                "base_output_dir": str(self.output_dir)
+            }
+        }        
+        output_path = self.output_dir / "vars.json"        
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(run_params, f, indent=4)
+            logger.info(f"运行参数已保存到: {output_path}")
+        except Exception as e:
+            logger.error(f"无法保存运行参数到 {output_path}: {e}")
+    
     def _run_script(self, script_path: str, args: List[str]) -> bool:
-        """运行Python脚本，并管理输出信息"""
+        """运行Python脚本,并管理输出信息"""
         full_script_path = self.project_root / script_path
         cmd = ['python', str(full_script_path)] + args
         
-        logger.info(f"执行命令: {' '.join(cmd)}")
+        # 将详细命令的日志级别降为DEBUG
+        logger.debug(f"执行命令: {' '.join(cmd)}")
         
         try:
             # 捕获输出，但在成功时不显示stdout/stderr，以保持日志整洁
@@ -116,7 +133,7 @@ class GAWorkflowExecutor:
     
     def _remove_duplicates_from_smiles_file(self, input_file: str, output_file: str) -> int:
         """
-        去除SMILES文件中的重复分子，并为每个分子添加唯一ID。
+        去除SMILES文件中的重复分子,并为每个分子添加唯一ID。
         输出格式: SMILES  ligand_id_X
         """
         try:
@@ -166,9 +183,7 @@ class GAWorkflowExecutor:
         Returns:
             初代种群对接结果文件路径
         """
-        logger.info("=" * 60)
-        logger.info("开始处理初代种群 (Generation 0)")
-        logger.info("=" * 60)
+        logger.info("开始处理初代种群 (Generation 0)...")
         
         gen_dir = self.output_dir / "generation_0"
         gen_dir.mkdir(exist_ok=True)
@@ -217,13 +232,10 @@ class GAWorkflowExecutor:
         Returns:
             (crossover_file, mutation_file): 交叉和突变结果文件路径
         """
-        logger.info(f"开始第{generation}代遗传操作")
-        
         gen_dir = self.output_dir / f"generation_{generation}"
         gen_dir.mkdir(exist_ok=True)
         
         # 1. 交叉操作
-        logger.info("执行交叉操作...")
         crossover_raw_file = gen_dir / "crossover_raw.smi"
         crossover_filtered_file = gen_dir / "crossover_filtered.smi"
         
@@ -246,15 +258,13 @@ class GAWorkflowExecutor:
         logger.info(f"交叉操作完成: 生成 {crossover_count} 个新分子 (过滤后)")
         
         # 2. 突变操作
-        logger.info("执行突变操作...")
         mutation_raw_file = gen_dir / "mutation_raw.smi"
         mutation_filtered_file = gen_dir / "mutation_filtered.smi"
         
         mutation_succeeded = self._run_script('operations/mutation/mutation_demo_finetune.py', [
             '--smiles_file', parent_file,
             '--output_file', str(mutation_raw_file)
-        ])
-        
+        ])        
         # 过滤突变结果
         filter_mutation_succeeded = self._run_script('operations/filter/filter_demo.py', [
             '--smiles_file', str(mutation_raw_file),
@@ -272,7 +282,7 @@ class GAWorkflowExecutor:
     
     def run_offspring_evaluation(self, crossover_file: str, mutation_file: str, generation: int) -> str:
         """
-        执行子代评估：合并、去重、添加ID、对接、评分
+        执行子代评估:合并、去重、添加ID、对接、评分
         
         Args:
             crossover_file: 交叉结果文件
@@ -371,9 +381,7 @@ class GAWorkflowExecutor:
     
     def run_complete_workflow(self):
         """执行完整的GA工作流"""
-        logger.info("开始执行完整的GA工作流程")
-        logger.info(f"配置文件: {self.config_path}")
-        logger.info(f"输出目录: {self.output_dir}")
+        logger.info(f"开始执行完整的GA工作流程 (输出目录: {self.output_dir})")
         
         # 第0步：初代种群处理
         current_parents_file = self.run_initial_generation()
@@ -383,9 +391,7 @@ class GAWorkflowExecutor:
         
         # 开始迭代
         for generation in range(1, self.max_generations + 1):
-            logger.info("=" * 60)
-            logger.info(f"开始第 {generation} 代进化")
-            logger.info("=" * 60)
+            logger.info(f"----- 开始第 {generation} 代进化 -----")
             
             # 1. 遗传操作
             crossover_file, mutation_file = self.run_genetic_operations(current_parents_file, generation)
@@ -412,8 +418,7 @@ class GAWorkflowExecutor:
         
         logger.info("=" * 60)
         logger.info("GA工作流程全部完成!")
-        logger.info(f"最终优化结果保存在: {current_parents_file}")
-        logger.info(f"所有中间结果保存在: {self.output_dir}")
+        logger.info(f"最终优化种群保存在: {current_parents_file}")
         logger.info("=" * 60)
         
         return True

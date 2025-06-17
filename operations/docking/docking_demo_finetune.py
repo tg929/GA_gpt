@@ -41,7 +41,7 @@ from tqdm import tqdm
 from collections import defaultdict
 
 def vina_dock_single(ligand_file, receptor_pdbqt, results_dir, vars):
-    """ 单个分子的对接函数，静默忽略失败。"""    
+    """ 单个分子的对接函数，静默忽略失败分子。"""    
     out_file = os.path.join(results_dir, os.path.basename(ligand_file).replace(".pdbqt", "_out.pdbqt"))
     log_file = os.path.join(results_dir, os.path.basename(ligand_file).replace(".pdbqt", ".log"))    
     cmd = [
@@ -192,9 +192,15 @@ class DockingWorkflow:
         
     def _initialize_vars_from_config(self, config: Dict):
         """从配置文件初始化vars字典"""
-        # 获取各个配置部分
+        # 获取对接配置部分
         docking_config = config.get('docking', {})
-        paths_config = config.get('paths', {})
+
+        def resolve_path(key):
+            """如果路径是相对路径,则解析为基于项目根目录的绝对路径"""
+            path_str = docking_config.get(key)
+            if path_str and not os.path.isabs(path_str):
+                return os.path.join(PROJECT_ROOT, path_str)
+            return path_str
         
         # 初始化vars字典
         self.vars = {
@@ -212,25 +218,13 @@ class DockingWorkflow:
             'pka_precision': docking_config.get('pka_precision', 1.0),
             'debug_mode': docking_config.get('debug_mode', False),
             
-            # 路径配置
-            'output_directory': paths_config.get('temp_dir', 'GA_gpt_output/temp'),
-            'ligand_dir': paths_config.get('ligand_dir', 'GA_gpt_output/ligands'),
-            'sdf_dir': paths_config.get('sdf_dir', 'GA_gpt_output/ligands3D_SDFs'),
-            'pdb_dir': paths_config.get('pdb_dir', 'GA_gpt_output/ligands3D_PDBs'),
-            'docking_results_dir': paths_config.get('docking_results_dir', 'GA_gpt_output/docking_results'),
-            
-            # MGLTools路径
-            'mgltools_directory': paths_config.get('mgltools_dir'),
-            'mgl_python': paths_config.get('mgl_python'),
-            'prepare_receptor4.py': paths_config.get('prepare_receptor4.py'),
-            'prepare_ligand4.py': paths_config.get('prepare_ligand4.py'),
-            
-            # 对接可执行文件
-            'docking_executable': paths_config.get('docking_executable'),
-            'timeout_vs_gtimeout': paths_config.get('timeout_vs_gtimeout', 'timeout'),
-            
-            # 配体文件（运行时设置）
-            # 'ligands': docking_config.get('ligands', ''), # 由构造函数直接设置
+            # MGLTools和对接程序路径(从对接配置块读取并解析)
+            'mgltools_directory': resolve_path('mgltools_dir'),
+            'mgl_python': resolve_path('mgl_python'),
+            'prepare_receptor4.py': resolve_path('prepare_receptor4.py'),
+            'prepare_ligand4.py': resolve_path('prepare_ligand4.py'),
+            'docking_executable': resolve_path('docking_executable'),
+            'timeout_vs_gtimeout': docking_config.get('timeout_vs_gtimeout', 'timeout'),
         }
         
     def _setup_generation_dirs(self):
@@ -264,8 +258,8 @@ class DockingWorkflow:
         print(f"使用默认受体: {receptor_info.get('name', 'N/A')} ({receptor_info.get('description', 'No description')})")
         
         # 设置受体相关参数
-        project_root = config.get('paths', {}).get('project_root', PROJECT_ROOT)
-        self.vars['receptor_file'] = os.path.join(project_root, receptor_info['file'])
+        # 移除对 'paths' 的依赖,直接使用 PROJECT_ROOT
+        self.vars['receptor_file'] = os.path.join(PROJECT_ROOT, receptor_info['file'])
         self.vars['filename_of_receptor'] = self.vars['receptor_file'] # 别名，用于autogrow兼容性
         self.vars['center_x'] = receptor_info['center_x']
         self.vars['center_y'] = receptor_info['center_y'] 
@@ -290,10 +284,9 @@ class DockingWorkflow:
             raise ValueError(f"目标受体 '{receptor_name}' 未在 target_list 中找到。可用目标: {available_receptors}")
             
         receptor_info = target_list[receptor_name]
-        project_root = config.get('paths', {}).get('project_root', PROJECT_ROOT)
         
-        # 更新受体相关参数
-        self.vars['receptor_file'] = os.path.join(project_root, receptor_info['file'])
+        # 更新受体相关参数, 移除对 'paths' 的依赖,直接使用 PROJECT_ROOT
+        self.vars['receptor_file'] = os.path.join(PROJECT_ROOT, receptor_info['file'])
         self.vars['filename_of_receptor'] = self.vars['receptor_file']  # 兼容性
         self.vars['center_x'] = receptor_info['center_x']
         self.vars['center_y'] = receptor_info['center_y']

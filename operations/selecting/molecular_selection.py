@@ -20,9 +20,10 @@ import json
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import autogrow.docking.ranking.selecting.rank_selection as Rank_Sel
-import autogrow.docking.ranking.selecting.roulette_selection as Roulette_Sel
-import autogrow.docking.ranking.selecting.tournament_selection as Tournament_Sel
+# 使用本地实现的选择算法模块
+from operations.selecting.ranking import rank_selection
+from operations.selecting.ranking import roulette_selection  
+from operations.selecting.ranking import tournament_selection
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ def load_molecules_with_scores(docked_file: str) -> List[List[str]]:
         docked_file: 对接结果文件路径，格式为 "SMILES score"。
     
     Returns:
-        autogrow格式的分子数据列表,每个元素格式为 [SMILES, name, docking_score]。
+        autogrow格式的分子数据列表,每个元素格式为 [SMILES, name, docking_score(float)]。
     """
     molecules = []
     try:
@@ -48,8 +49,8 @@ def load_molecules_with_scores(docked_file: str) -> List[List[str]]:
                         smiles = parts[0]
                         try:
                             docking_score = float(parts[1])
-                            # autogrow格式: [SMILES, name, docking_score]
-                            molecules.append([smiles, f"mol_{idx}", str(docking_score)])
+                            # autogrow格式: [SMILES, name, docking_score], 确保分数为float
+                            molecules.append([smiles, f"mol_{idx}", docking_score])
                         except ValueError:
                             logger.warning(f"无法解析分数 {parts[1]} for SMILES {smiles}")
     except FileNotFoundError:
@@ -77,16 +78,16 @@ def merge_and_deduplicate_populations(child_molecules: List[List[str]],
     # 先添加子代分子
     for mol in child_molecules:
         smiles = mol[0]
-        score = float(mol[2])
-        if smiles not in merged_dict or score < float(merged_dict[smiles][2]):
+        score = mol[2] # 分数已经是float
+        if smiles not in merged_dict or score < merged_dict[smiles][2]:
             merged_dict[smiles] = mol
     
     # 如果有父代分子，添加父代分子（保持去重逻辑）
     if parent_molecules:
         for mol in parent_molecules:
             smiles = mol[0]
-            score = float(mol[2])
-            if smiles not in merged_dict or score < float(merged_dict[smiles][2]):
+            score = mol[2] # 分数已经是float
+            if smiles not in merged_dict or score < merged_dict[smiles][2]:
                 merged_dict[smiles] = mol
     
     merged_list = list(merged_dict.values())
@@ -132,13 +133,13 @@ def select_molecules_by_algorithm(molecules_data: List[List[str]],
             # 排名选择：基于对接分数排名，选择最优的N个
             # column_idx_to_select=-1表示使用最后一列(docking_score)
             # reverse_sort=False表示升序排序（对接分数越小越好）
-            selected_smiles = Rank_Sel.run_rank_selector(
+            selected_smiles = rank_selection.run_rank_selector(
                 molecules_data, n_select, -1, False
             )
             
         elif selector_choice == "Roulette_Selector":
             # 轮盘赌选择：基于对接分数的加权随机选择
-            numpy_result = Roulette_Sel.spin_roulette_selector(
+            numpy_result = roulette_selection.spin_roulette_selector(
                 molecules_data, n_select, "docking"
             )
             # spin_roulette_selector返回numpy数组，需要转换为列表
@@ -148,7 +149,7 @@ def select_molecules_by_algorithm(molecules_data: List[List[str]],
             # 锦标赛选择：随机分组竞赛选择
             # idx_to_sel=-1表示使用最后一列(docking_score)
             # favor_most_negative=True表示对接分数越小越好
-            selected_molecules = Tournament_Sel.run_Tournament_Selector(
+            selected_molecules = tournament_selection.run_tournament_selector(
                 molecules_data, n_select, tourn_size, -1, True
             )
             # Tournament_Selector返回完整的分子信息，需要提取SMILES

@@ -69,25 +69,56 @@ def collect_all_statistics(output_dir, logger):
     
     all_stats = {}
     
-    # 查找所有受体蛋白目录
-    target_dirs = glob.glob(os.path.join(output_dir, "target_*"))
+    # 查找所有受体蛋白目录 (直接在输出目录下的子目录)
+    target_dirs = [d for d in glob.glob(os.path.join(output_dir, '*')) if os.path.isdir(d)]
     
+    if not target_dirs:
+        logger.warning(f"在目录 {output_dir} 下未找到任何受体蛋白目录。")
+
     for target_dir in sorted(target_dirs):
-        target_name = os.path.basename(target_dir).replace("target_", "")
+        target_name = os.path.basename(target_dir)
         logger.info(f"处理受体: {target_name}")
         
         all_stats[target_name] = {}
         
+        # 确定 generations 目录路径，以兼容两种结构
+        generations_base_path = os.path.join(target_dir, "generations")
+        if not os.path.isdir(generations_base_path):
+            logger.info(f"在受体 {target_name} 中未找到 'generations' 目录，将在受体主目录中查找 'generation_*' 目录。")
+            generations_base_path = target_dir
+
         # 查找所有代目录
-        generation_dirs = glob.glob(os.path.join(target_dir, "generation_*"))
+        generation_dirs = glob.glob(os.path.join(generations_base_path, "generation_*"))
         
-        for gen_dir in sorted(generation_dirs):
-            gen_num = int(os.path.basename(gen_dir).replace("generation_", ""))
+        if not generation_dirs:
+            logger.warning(f"在路径 {generations_base_path} 中未找到 'generation_*' 目录, 跳过受体 {target_name}。")
+            continue
+        
+        for gen_dir in sorted(generation_dirs, key=lambda d: int(re.search(r'generation_(\d+)', d).group(1))):
+            try:
+                gen_num_match = re.search(r'generation_(\d+)', os.path.basename(gen_dir))
+                if not gen_num_match:
+                    logger.warning(f"无法从目录名 {gen_dir} 中解析代数, 跳过。")
+                    continue
+                gen_num = int(gen_num_match.group(1))
+            except (ValueError, AttributeError):
+                logger.warning(f"无法从目录名 {gen_dir} 中解析代数, 跳过。")
+                continue
+
+            # 根据用户要求，从第一代开始统计
+            if gen_num < 1:
+                logger.info(f"  - 跳过第 {gen_num} 代 (仅统计 >= 1 代).")
+                continue
             
-            # 查找评估文件
-            eval_file = os.path.join(gen_dir, f"generation_{gen_num}_evaluation_metrics.txt")
-            
-            if os.path.exists(eval_file):
+            # 查找评估文件 (适应新的文件名格式)
+            eval_file_pattern = os.path.join(gen_dir, f"generation_{gen_num}_evaluation*.txt")
+            eval_files = glob.glob(eval_file_pattern)
+
+            if eval_files:
+                eval_file = eval_files[0] # 使用找到的第一个匹配文件
+                if len(eval_files) > 1:
+                    logger.warning(f"  - 找到多个评估文件，使用第一个: {eval_file}")
+
                 metrics = parse_evaluation_file(eval_file)
                 if metrics:
                     all_stats[target_name][gen_num] = metrics
@@ -95,7 +126,7 @@ def collect_all_statistics(output_dir, logger):
                 else:
                     logger.warning(f"  - 第{gen_num}代评估文件解析失败: {eval_file}")
             else:
-                logger.warning(f"  - 第{gen_num}代评估文件不存在: {eval_file}")
+                logger.warning(f"  - 第{gen_num}代评估文件不存在，匹配模式: {eval_file_pattern}")
     
     logger.info(f"数据收集完成，共处理 {len(all_stats)} 个受体蛋白")
     return all_stats
@@ -109,7 +140,7 @@ def create_excel_statistics(all_stats, output_file, logger):
     # 创建工作簿
     wb = Workbook()
     ws = wb.active
-    ws.title = "Multi-Objective Statistics"
+    ws.title = "All Statistics"
     
     # 设置表头
     headers = ['10服务器', '', 'top100', 'top10', 'top1', 'Nov', 'Div', 'QED', 'SA']
@@ -216,7 +247,7 @@ def main():
     parser.add_argument('--output_dir', type=str, required=True,
                         help='进化实验的输出目录')
     parser.add_argument('--excel_output', type=str, 
-                        default='multi_objective_statistics.xlsx',
+                        default='all_statistics.xlsx',
                         help='输出Excel文件路径')
     
     args = parser.parse_args()
