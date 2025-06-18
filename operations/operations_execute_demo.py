@@ -184,6 +184,33 @@ class GAWorkflowExecutor:
             logger.error(f"合并文件时发生错误: {e}")
             return False
     
+    def _extract_smiles_from_docked_file(self, docked_file: str, output_smiles_file: str) -> bool:
+        """
+        从带对接分数的文件中提取纯SMILES，用于遗传操作
+        
+        Args:
+            docked_file: 带分数的对接文件路径 (格式: SMILES score)
+            output_smiles_file: 输出的纯SMILES文件路径
+            
+        Returns:
+            bool: 是否成功提取
+        """
+        try:
+            with open(docked_file, 'r') as infile, open(output_smiles_file, 'w') as outfile:
+                for line in infile:
+                    line = line.strip()
+                    if line:
+                        # 提取第一列作为SMILES
+                        smiles = line.split()[0]
+                        outfile.write(f"{smiles}\n")
+            
+            extracted_count = self._count_molecules(output_smiles_file)
+            logger.debug(f"从 {docked_file} 提取了 {extracted_count} 个SMILES到 {output_smiles_file}")
+            return True
+        except Exception as e:
+            logger.error(f"从 {docked_file} 提取SMILES时出错: {e}")
+            return False
+    
     def run_initial_generation(self) -> str:
         """
         执行初代种群处理
@@ -408,7 +435,8 @@ class GAWorkflowExecutor:
         selection_args = [
             '--docked_file', offspring_docked_file,
             '--parent_file', parent_docked_file,
-            '--output_file', str(next_parents_file)
+            '--output_file', str(next_parents_file),
+            '--config_file', self.config_path
         ]
         
         # 如果提供了选择器覆盖参数，添加到命令行参数中
@@ -431,8 +459,8 @@ class GAWorkflowExecutor:
         logger.info(f"开始执行完整的GA工作流程 (输出目录: {self.output_dir})")
         
         # 第0步：初代种群处理
-        current_parents_file = self.run_initial_generation()
-        if not current_parents_file:
+        current_parents_docked_file = self.run_initial_generation()
+        if not current_parents_docked_file:
             logger.error("初代种群处理失败，工作流终止")
             return False
         
@@ -440,33 +468,42 @@ class GAWorkflowExecutor:
         for generation in range(1, self.max_generations + 1):
             logger.info(f"----- 开始第 {generation} 代进化 -----")
             
-            # 1. 遗传操作
-            crossover_file, mutation_file = self.run_genetic_operations(current_parents_file, generation)
+            # 1. 从带分数的父代文件中提取纯SMILES用于遗传操作
+            gen_dir = self.output_dir / f"generation_{generation}"
+            gen_dir.mkdir(exist_ok=True)
+            parent_smiles_file = gen_dir / "parent_smiles_for_genetic_ops.smi"
+            
+            if not self._extract_smiles_from_docked_file(current_parents_docked_file, str(parent_smiles_file)):
+                logger.error(f"第{generation}代: 无法从父代文件提取SMILES，工作流终止")
+                return False
+            
+            # 2. 遗传操作 (使用纯SMILES文件)
+            crossover_file, mutation_file = self.run_genetic_operations(str(parent_smiles_file), generation)
             if not crossover_file or not mutation_file:
                 logger.error(f"第{generation}代遗传操作失败，工作流终止")
                 return False
             
-            # 2. 子代评估
+            # 3. 子代评估 (得到带分数的子代文件)
             offspring_docked_file = self.run_offspring_evaluation(crossover_file, mutation_file, generation)
             if not offspring_docked_file:
                 logger.error(f"第{generation}代子代评估失败，工作流终止")
                 return False
             
-            # 3. 选择操作 (使用动态选择策略)
+            # 4. 选择操作：从父代(带分数) + 子代(带分数)中选择下一代父代(带分数)
             current_selector = self._determine_selection_strategy(generation)
-            next_parents_file = self.run_selection(current_parents_file, offspring_docked_file, generation, current_selector)
-            if not next_parents_file:
+            next_parents_docked_file = self.run_selection(current_parents_docked_file, offspring_docked_file, generation, current_selector)
+            if not next_parents_docked_file:
                 logger.error(f"第{generation}代选择操作失败，工作流终止")
                 return False
             
-            # 更新父代文件，准备下一代
-            current_parents_file = next_parents_file
+            # 更新父代文件，准备下一代 (现在是带分数的文件)
+            current_parents_docked_file = next_parents_docked_file
             
             logger.info(f"第 {generation} 代进化完成")
         
         logger.info("=" * 60)
         logger.info("GA工作流程全部完成!")
-        logger.info(f"最终优化种群保存在: {current_parents_file}")
+        logger.info(f"最终优化种群保存在: {current_parents_docked_file}")
         logger.info("=" * 60)
         
         return True

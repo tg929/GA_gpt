@@ -99,7 +99,7 @@ def merge_and_deduplicate_populations(child_molecules: List[List[str]],
 def select_molecules_by_algorithm(molecules_data: List[List[str]], 
                                  n_select: int, 
                                  selector_choice: str, 
-                                 tourn_size: float = 0.1) -> List[str]:
+                                 tourn_size: float = 0.1) -> List[List[str]]:
     """
     使用指定算法选择分子。    
     Args:
@@ -109,7 +109,7 @@ def select_molecules_by_algorithm(molecules_data: List[List[str]],
         tourn_size: 锦标赛大小(仅用于Tournament_Selector)
     
     Returns:
-        选中的SMILES列表
+        选中的分子完整信息列表 [SMILES, name, score]
     """
     if not molecules_data:
         logger.warning("分子数据为空，无法执行选择。")
@@ -121,7 +121,7 @@ def select_molecules_by_algorithm(molecules_data: List[List[str]],
     
     if len(molecules_data) < n_select:
         logger.warning(f"候选分子数量({len(molecules_data)})少于要选择的数量({n_select})，返回所有分子。")
-        return [mol[0] for mol in molecules_data]
+        return molecules_data
     
     logger.info(f"使用 {selector_choice} 从 {len(molecules_data)} 个候选中选择 {n_select} 个分子")
     
@@ -133,6 +133,9 @@ def select_molecules_by_algorithm(molecules_data: List[List[str]],
             selected_smiles = rank_selection.run_rank_selector(
                 molecules_data, n_select, -1, False
             )
+            # 从选中的SMILES找回完整的分子信息
+            smiles_to_mol = {mol[0]: mol for mol in molecules_data}
+            selected_molecules = [smiles_to_mol[smiles] for smiles in selected_smiles if smiles in smiles_to_mol]
             
         elif selector_choice == "Roulette_Selector":
             # 轮盘赌选择：基于对接分数的加权随机选择
@@ -141,6 +144,9 @@ def select_molecules_by_algorithm(molecules_data: List[List[str]],
             )
             # spin_roulette_selector返回numpy数组，需要转换为列表
             selected_smiles = numpy_result.tolist()
+            # 从选中的SMILES找回完整的分子信息
+            smiles_to_mol = {mol[0]: mol for mol in molecules_data}
+            selected_molecules = [smiles_to_mol[smiles] for smiles in selected_smiles if smiles in smiles_to_mol]
             
         elif selector_choice == "Tournament_Selector":
             # 锦标赛选择：随机分组竞赛选择
@@ -149,18 +155,26 @@ def select_molecules_by_algorithm(molecules_data: List[List[str]],
             selected_molecules = tournament_selection.run_tournament_selector(
                 molecules_data, n_select, tourn_size, -1, True
             )
-            # Tournament_Selector返回完整的分子信息，需要提取SMILES
-            selected_smiles = [mol[0] for mol in selected_molecules]
+            # Tournament_Selector直接返回完整的分子信息
             
         else:
             raise ValueError(f"不支持的选择算法: {selector_choice}")
         
-        logger.info(f"{selector_choice} 选择完成：成功选出 {len(selected_smiles)} 个分子")
-        return selected_smiles
+        logger.info(f"{selector_choice} 选择完成：成功选出 {len(selected_molecules)} 个分子")
+        return selected_molecules
         
     except Exception as e:
         logger.error(f"选择算法执行失败: {e}")
         return []
+
+def save_selected_molecules_with_scores(selected_molecules: List[List[str]], output_file: str):
+    """将选中的分子及其分数保存到文件，格式为: SMILES score"""
+    with open(output_file, 'w') as f:
+        for mol in selected_molecules:
+            smiles = mol[0]
+            score = mol[2]  # 对接分数
+            f.write(f"{smiles}\t{score}\n")
+    logger.info(f"已保存 {len(selected_molecules)} 个选中的分子(带分数)到 {output_file}")
 
 def save_selected_molecules(selected_smiles: List[str], output_file: str):
     """将选中的分子SMILES保存到文件。"""
@@ -169,23 +183,18 @@ def save_selected_molecules(selected_smiles: List[str], output_file: str):
             f.write(f"{smiles}\n")
     logger.info(f"已保存 {len(selected_smiles)} 个选中的分子到 {output_file}")
 
-def print_selection_statistics(molecules_data: List[List[str]], selected_smiles: List[str]):
+def print_selection_statistics(selected_molecules: List[List[str]]):
     """打印选择统计信息。"""
-    if not selected_smiles:
+    if not selected_molecules:
         logger.warning("没有选择任何分子用于统计。")
         return
     
     # 获取选中分子的对接分数
-    selected_scores = []
-    smiles_to_score = {mol[0]: float(mol[-1]) for mol in molecules_data}
-    
-    for smiles in selected_smiles:
-        if smiles in smiles_to_score:
-            selected_scores.append(smiles_to_score[smiles])
+    selected_scores = [float(mol[2]) for mol in selected_molecules]
     
     if selected_scores:
         print("\n========== 选择统计信息 ==========")
-        print(f"选中分子数量: {len(selected_smiles)}")
+        print(f"选中分子数量: {len(selected_molecules)}")
         print(f"对接分数范围: {min(selected_scores):.4f} 至 {max(selected_scores):.4f}")
         print(f"平均对接分数: {sum(selected_scores)/len(selected_scores):.4f}")
         print("=" * 40)
@@ -254,14 +263,14 @@ def main():
         return
 
     # 4. 使用指定算法选择分子
-    selected_smiles = select_molecules_by_algorithm(
+    selected_molecules = select_molecules_by_algorithm(
         merged_molecules, n_select, selector_choice, tourn_size
     )
 
-    # 5. 保存并打印结果
-    if selected_smiles:
-        save_selected_molecules(selected_smiles, args.output_file)
-        print_selection_statistics(merged_molecules, selected_smiles)
+    # 5. 保存选中的分子(带分数)并打印统计信息
+    if selected_molecules:
+        save_selected_molecules_with_scores(selected_molecules, args.output_file)
+        print_selection_statistics(selected_molecules)
     else:
         logger.error("未选择任何分子。")
 
