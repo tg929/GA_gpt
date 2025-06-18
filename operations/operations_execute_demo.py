@@ -35,34 +35,14 @@ class GAWorkflowExecutor:
         """
         self.config_path = config_path
         self.config = self._load_config()
-        self.receptor_name = receptor_name
-        self.project_root = Path(self.config.get('paths', {}).get('project_root', PROJECT_ROOT))
-        
-        # 从配置中读取工作流参数
-        workflow_config = self.config.get('workflow', {})
-        self.max_generations = workflow_config.get('max_generations', 5)
-        self.initial_population_file = workflow_config.get('initial_population_file', 'datasets/source_compounds/naphthalene_smiles.smi')
-        
-        # 输出目录优先级：命令行参数 > 配置文件 > 默认值
-        if output_dir_override:
-            output_dir_name = output_dir_override
-            logger.info(f"使用命令行指定的输出目录: {output_dir_name}")
-        else:
-            output_dir_name = workflow_config.get('output_directory', 'GA_output')
-            logger.info(f"使用配置文件中的输出目录: {output_dir_name}")
 
-        # 创建基于受体的输出目录结构
-        base_output_dir = self.project_root / output_dir_name
-        
-        if self.receptor_name:
-            self.output_dir = base_output_dir / self.receptor_name
-            logger.info(f"将为受体 '{self.receptor_name}' 在指定目录中创建输出。")
-        else:
-            self.output_dir = base_output_dir / "default_receptor_run"
-            logger.info("未指定受体，将在默认目录中创建输出。")
+        # 初始化一个字典，用于存储本次运行的精确参数
+        self.run_params = {}
 
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        
+        # 设置所有路径和参数，这个过程会填充self.run_params
+        self._setup_parameters_and_paths(receptor_name, output_dir_override)
+
+        # 保存本次运行的精确参数
         self._save_run_parameters()
         
         logger.info(f"GA工作流初始化完成, 输出目录: {self.output_dir}")
@@ -76,20 +56,54 @@ class GAWorkflowExecutor:
             logger.error(f"无法加载配置文件 {self.config_path}: {e}")
             raise
     
+    def _setup_parameters_and_paths(self, receptor_name: Optional[str], output_dir_override: Optional[str]):
+        """
+        根据输入和配置，设置所有工作路径和运行参数，并填充self.run_params。
+        """
+        self.project_root = Path(self.config.get('paths', {}).get('project_root', PROJECT_ROOT))
+        workflow_config = self.config.get('workflow', {})
+
+        # 1. 记录使用的配置文件和项目根目录
+        self.run_params['config_file_path'] = self.config_path
+        self.run_params['project_root'] = str(self.project_root)
+
+        # 2. 确定并记录输出目录
+        if output_dir_override:
+            output_dir_name = output_dir_override
+            logger.info(f"使用命令行指定的输出目录: {output_dir_name}")
+        else:
+            output_dir_name = workflow_config.get('output_directory', 'GA_output')
+        base_output_dir = self.project_root / output_dir_name
+        self.run_params['base_output_dir'] = str(base_output_dir)
+
+        # 3. 确定并记录受体信息
+        self.receptor_name = receptor_name
+        if self.receptor_name:
+            self.output_dir = base_output_dir / self.receptor_name
+            logger.info(f"将为受体 '{self.receptor_name}' 在指定目录中创建输出。")
+            self.run_params['receptor_name'] = self.receptor_name
+        else:
+            self.output_dir = base_output_dir / "default_receptor_run"
+            logger.info("未指定受体，将在默认目录中创建输出。")
+            self.run_params['receptor_name'] = "default_receptor"
+        
+        self.run_params['run_specific_output_dir'] = str(self.output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 4. 记录其他GA核心参数
+        self.max_generations = workflow_config.get('max_generations', 5)
+        self.initial_population_file = workflow_config.get('initial_population_file', 'datasets/source_compounds/naphthalene_smiles.smi')
+        self.run_params['max_generations'] = self.max_generations
+        self.run_params['initial_population_file'] = self.initial_population_file
+        self.run_params['molecular_selection_config'] = self.config.get('molecular_selection', {})
+
     def _save_run_parameters(self):
-        """将本次运行使用的所有参数保存到vars.json,以便于追踪和复现。"""
-        # 创建一个字典来存储所有参数
-        run_params = {
-            "config_file_content": self.config,
-            "runtime_parameters": {
-                "receptor_name": self.receptor_name or "default",
-                "base_output_dir": str(self.output_dir)
-            }
-        }        
-        output_path = self.output_dir / "vars.json"        
+        """将本次运行使用的精确参数(self.run_params)保存到vars.json。"""
+        output_path = self.output_dir / "vars.json"
         try:
             with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(run_params, f, indent=4)
+                # 只保存精确的、用于本次运行的参数字典
+                json.dump(self.run_params, f, indent=4, ensure_ascii=False)
             logger.info(f"运行参数已保存到: {output_path}")
         except Exception as e:
             logger.error(f"无法保存运行参数到 {output_path}: {e}")
@@ -124,12 +138,9 @@ class GAWorkflowExecutor:
     
     def _count_molecules(self, file_path: str) -> int:
         """统计文件中分子数量"""
-        try:
-            with open(file_path, 'r') as f:
-                count = sum(1 for line in f if line.strip())
-            return count
-        except Exception:
-            return 0
+        with open(file_path, 'r') as f:
+            count = sum(1 for line in f if line.strip())
+        return count
     
     def _remove_duplicates_from_smiles_file(self, input_file: str, output_file: str) -> int:
         """
@@ -163,14 +174,11 @@ class GAWorkflowExecutor:
         try:
             with open(output_file, 'w') as outf:
                 for file_path in file_list:
-                    if os.path.exists(file_path):
-                        with open(file_path, 'r') as inf:
-                            for line in inf:
-                                line = line.strip()
-                                if line:
-                                    outf.write(line + '\n')
-                    else:
-                        logger.warning(f"文件不存在: {file_path}")
+                    with open(file_path, 'r') as inf:
+                        for line in inf:
+                            line = line.strip()
+                            if line:
+                                outf.write(line + '\n')
             return True
         except Exception as e:
             logger.error(f"合并文件时发生错误: {e}")
@@ -347,7 +355,38 @@ class GAWorkflowExecutor:
         
         return str(offspring_docked_file)
     
-    def run_selection(self, parent_docked_file: str, offspring_docked_file: str, generation: int) -> str:
+    def _determine_selection_strategy(self, generation: int) -> str:
+        """
+        根据当前代数和配置，动态决定选择策略
+        
+        Args:
+            generation: 当前代数
+            
+        Returns:
+            str: 应该使用的选择器名称
+        """
+        selection_config = self.config.get('molecular_selection', {})
+        
+        # 检查是否启用动态选择
+        if not selection_config.get('enable_dynamic_selection', False):
+            # 动态选择关闭，使用静态默认值
+            selector = selection_config.get('selector_choice', 'Rank_Selector')
+            logger.debug(f"第 {generation} 代: 使用静态选择策略 -> {selector}")
+            return selector
+        
+        # 动态选择已启用
+        transition_gen = selection_config.get('dynamic_selection_transition_generation', 3)
+        early_selector = selection_config.get('early_stage_selector', 'Roulette_Selector')
+        late_selector = selection_config.get('late_stage_selector', 'Rank_Selector')
+        
+        if generation < transition_gen:
+            logger.info(f"第 {generation} 代 (早期探索阶段): 使用多样性选择策略 -> {early_selector}")
+            return early_selector
+        else:
+            logger.info(f"第 {generation} 代 (后期挖掘阶段): 切换到精英选择策略 -> {late_selector}")
+            return late_selector
+
+    def run_selection(self, parent_docked_file: str, offspring_docked_file: str, generation: int, selector_override: str = None) -> str:
         """
         执行选择操作：从父代+子代中选择下一代父代
         
@@ -355,6 +394,7 @@ class GAWorkflowExecutor:
             parent_docked_file: 父代对接结果文件
             offspring_docked_file: 子代对接结果文件
             generation: 当前代数
+            selector_override: (新增) 可选的选择器覆盖参数
             
         Returns:
             下一代父代文件路径
@@ -364,11 +404,18 @@ class GAWorkflowExecutor:
         gen_dir = self.output_dir / f"generation_{generation}"
         next_parents_file = gen_dir / f"next_generation_parents.smi"
         
-        selection_succeeded = self._run_script('operations/selecting/molecular_selection.py', [
+        # 构建选择脚本的参数列表
+        selection_args = [
             '--docked_file', offspring_docked_file,
             '--parent_file', parent_docked_file,
             '--output_file', str(next_parents_file)
-        ])
+        ]
+        
+        # 如果提供了选择器覆盖参数，添加到命令行参数中
+        if selector_override:
+            selection_args.extend(['--selector_override', selector_override])
+        
+        selection_succeeded = self._run_script('operations/selecting/molecular_selection.py', selection_args)
         
         selected_count = self._count_molecules(str(next_parents_file))
         if not selection_succeeded or selected_count == 0:
@@ -405,8 +452,9 @@ class GAWorkflowExecutor:
                 logger.error(f"第{generation}代子代评估失败，工作流终止")
                 return False
             
-            # 3. 选择操作
-            next_parents_file = self.run_selection(current_parents_file, offspring_docked_file, generation)
+            # 3. 选择操作 (使用动态选择策略)
+            current_selector = self._determine_selection_strategy(generation)
+            next_parents_file = self.run_selection(current_parents_file, offspring_docked_file, generation, current_selector)
             if not next_parents_file:
                 logger.error(f"第{generation}代选择操作失败，工作流终止")
                 return False

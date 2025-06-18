@@ -42,38 +42,22 @@ def main():
     parser.add_argument('--all_receptors', action='store_true',
                         help='(可选) 运行配置文件中`target_list`的所有受体。如果使用此选项，将忽略--receptor参数。')
     parser.add_argument('--output_dir', type=str, default='GA_output',
-                        help='(可选) 指定输出目录。')
-    
+                        help='(可选) 指定输出目录。')    
     args = parser.parse_args()
-
     # --- 参数验证和准备 ---
     config_path = Path(args.config)
-    if not config_path.is_file():
-        logger.error(f"配置文件未找到: {config_path}")
-        sys.exit(1)
-
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-    except Exception as e:
-        logger.error(f"读取或解析配置文件时出错: {e}")
-        sys.exit(1)
-        
+    with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)        
     receptors_to_run = []
     if args.all_receptors:
         logger.info("检测到 --all_receptors 标志，将为配置文件中的所有受体运行工作流。")
-        receptors_to_run = list(config.get('receptors', {}).get('target_list', {}).keys())
-        if not receptors_to_run:
-            logger.error("配置文件中 'target_list' 为空或不存在，无法使用 --all_receptors。")
-            sys.exit(1)
+        receptors_to_run = list(config.get('receptors', {}).get('target_list', {}).keys())        
         logger.info(f"计划运行的受体列表: {receptors_to_run}")
     else:
         receptors_to_run.append(args.receptor)
-
     # --- 循环启动工作流 ---
     successful_runs = []
     failed_runs = []
-
     for receptor_name in receptors_to_run:
         receptor_display_name = receptor_name or '默认受体'
         try:
@@ -94,7 +78,7 @@ def main():
             
             if success:
                 logger.info("=" * 60)
-                logger.info(f"针对受体 '{receptor_display_name}' 的GA工作流成功完成！")
+                logger.info(f"针对受体 '{receptor_display_name}' 的GA工作流成功完成!")
                 logger.info("=" * 60)
                 successful_runs.append(receptor_display_name)
             else:

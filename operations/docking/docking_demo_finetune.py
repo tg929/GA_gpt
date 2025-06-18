@@ -436,10 +436,6 @@ def run_molecular_docking(config: Dict, ligands_file: str, generation_dir: str, 
     """
     logger.info("启动分子对接工作流程...")
     
-    if not os.path.exists(ligands_file) or os.path.getsize(ligands_file) == 0:
-        logger.error(f"输入的配体文件为空或不存在: {ligands_file}")
-        return None
-        
     try:
         # 实例化工作流，并传入配体文件路径
         workflow = DockingWorkflow(config, generation_dir, ligands_file)

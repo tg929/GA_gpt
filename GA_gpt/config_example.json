@@ -32,6 +32,17 @@
       "size_z": 25.0
     },
     "target_list": {
+      "parp1": {
+        "name": "parp1",
+        "description": "parp1 receptor", 
+        "file": "tutorial/PARP/4r6eA_PARP1_prepared.pdb",
+        "center_x": -70.76,
+        "center_y": 21.82,
+        "center_z": 28.33,
+        "size_x": 25.0,
+        "size_y": 16.0,
+        "size_z": 25.0
+      },
       "4r6e": {
         "name": "4r6e",
         "description": "4r6e receptor", 
@@ -190,9 +201,13 @@
       "Roulette_Selector",
       "Tournament_Selector"
     ],
-    "n_select": 120,
+    "n_select": 50,
     "selector_choice": "Rank_Selector",
-    "tourn_size": 0.1
+    "tourn_size": 0.1,
+    "enable_dynamic_selection": false,
+    "dynamic_selection_transition_generation": 3,
+    "early_stage_selector": "Roulette_Selector",
+    "late_stage_selector": "Rank_Selector"
   },
   "selection": {
     "population_size": 120,

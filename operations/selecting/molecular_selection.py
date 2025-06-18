@@ -39,23 +39,20 @@ def load_molecules_with_scores(docked_file: str) -> List[List[str]]:
         autogrow格式的分子数据列表,每个元素格式为 [SMILES, name, docking_score(float)]。
     """
     molecules = []
-    try:
-        with open(docked_file, 'r') as f:
-            for idx, line in enumerate(f):
-                line = line.strip()
-                if line:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        smiles = parts[0]
-                        try:
-                            docking_score = float(parts[1])
-                            # autogrow格式: [SMILES, name, docking_score], 确保分数为float
-                            molecules.append([smiles, f"mol_{idx}", docking_score])
-                        except ValueError:
-                            logger.warning(f"无法解析分数 {parts[1]} for SMILES {smiles}")
-    except FileNotFoundError:
-        logger.error(f"找不到文件 {docked_file}")
-        return []    
+    with open(docked_file, 'r') as f:
+        for idx, line in enumerate(f):
+            line = line.strip()
+            if line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    smiles = parts[0]
+                    try:
+                        docking_score = float(parts[1])
+                        # autogrow格式: [SMILES, name, docking_score], 确保分数为float
+                        molecules.append([smiles, f"mol_{idx}", docking_score])
+                    except ValueError:
+                        logger.warning(f"无法解析分数 {parts[1]} for SMILES {smiles}")
+    
     logger.info(f"成功加载 {len(molecules)} 个分子")
     return molecules
 
@@ -203,6 +200,8 @@ def main():
                         help='输出的选中分子文件路径')
     parser.add_argument('--config_file', type=str, default='GA_gpt/config_example.json',
                         help='配置文件路径')
+    parser.add_argument('--selector_override', type=str, default=None,
+                        help='(可选) 强制使用指定的选择算法，覆盖配置文件中的设置')
     
     args = parser.parse_args()
 
@@ -216,7 +215,14 @@ def main():
         return
 
     n_select = selection_config.get('n_select', 100)
-    selector_choice = selection_config.get('selector_choice', 'Rank_Selector')
+    # 动态选择器决策逻辑：优先使用override参数，否则使用配置文件
+    if args.selector_override:
+        selector_choice = args.selector_override
+        logger.info(f"使用外部指定的选择器: {selector_choice}")
+    else:
+        selector_choice = selection_config.get('selector_choice', 'Rank_Selector')
+        logger.info(f"使用配置文件中的选择器: {selector_choice}")
+    
     tourn_size = selection_config.get('tourn_size', 0.1)
 
     logger.info(f"开始 {selector_choice} 分子选择...")
