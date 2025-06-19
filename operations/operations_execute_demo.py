@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# 导入配置快照生成器
+from operations.stating.config_snapshot_generator import save_config_snapshot
+
 class GAWorkflowExecutor:
     """GA工作流执行器"""    
     def __init__(self, config_path: str, receptor_name: Optional[str] = None, output_dir_override: Optional[str] = None):
@@ -58,7 +61,7 @@ class GAWorkflowExecutor:
     
     def _setup_parameters_and_paths(self, receptor_name: Optional[str], output_dir_override: Optional[str]):
         """
-        根据输入和配置，设置所有工作路径和运行参数，并填充self.run_params。
+        根据输入和配置,设置所有工作路径和运行参数，并填充self.run_params。
         """
         self.project_root = Path(self.config.get('paths', {}).get('project_root', PROJECT_ROOT))
         workflow_config = self.config.get('workflow', {})
@@ -95,18 +98,46 @@ class GAWorkflowExecutor:
         self.initial_population_file = workflow_config.get('initial_population_file', 'datasets/source_compounds/naphthalene_smiles.smi')
         self.run_params['max_generations'] = self.max_generations
         self.run_params['initial_population_file'] = self.initial_population_file
-        self.run_params['molecular_selection_config'] = self.config.get('molecular_selection', {})
+        
+        # 5. 记录实际使用的选择模式
+        selection_config = self.config.get('selection', {})
+        self.run_params['selection_mode'] = selection_config.get('selection_mode', 'single_objective')
 
     def _save_run_parameters(self):
-        """将本次运行使用的精确参数(self.run_params)保存到vars.json。"""
-        output_path = self.output_dir / "vars.json"
+        """使用配置快照生成器保存完整的运行参数。"""
+        # 构建执行上下文，包含本次运行的所有关键信息
+        execution_context = {
+            "config_file_path": self.run_params.get('config_file_path'),
+            "project_root": self.run_params.get('project_root'),
+            "base_output_dir": self.run_params.get('base_output_dir'),
+            "receptor_name": self.run_params.get('receptor_name'),
+            "run_specific_output_dir": self.run_params.get('run_specific_output_dir'),
+            "max_generations": self.run_params.get('max_generations'),
+            "initial_population_file": self.run_params.get('initial_population_file'),
+            "selection_mode": self.run_params.get('selection_mode')
+        }
+        
+        # 使用配置快照生成器保存完整配置
+        snapshot_file_path = self.output_dir / "execution_config_snapshot.json"
+        success = save_config_snapshot(
+            original_config=self.config,
+            execution_context=execution_context,
+            output_file_path=str(snapshot_file_path)
+        )
+        
+        if success:
+            logger.info(f"完整的执行配置快照已保存到: {snapshot_file_path}")
+        else:
+            logger.error("保存执行配置快照失败")
+            
+        # 为了向后兼容，也保留原来的简化版本
+        legacy_vars_path = self.output_dir / "vars.json"
         try:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                # 只保存精确的、用于本次运行的参数字典
+            with open(legacy_vars_path, 'w', encoding='utf-8') as f:
                 json.dump(self.run_params, f, indent=4, ensure_ascii=False)
-            logger.info(f"运行参数已保存到: {output_path}")
+            logger.info(f"简化版运行参数已保存到: {legacy_vars_path}")
         except Exception as e:
-            logger.error(f"无法保存运行参数到 {output_path}: {e}")
+            logger.error(f"无法保存简化版运行参数到 {legacy_vars_path}: {e}")
     
     def _run_script(self, script_path: str, args: List[str]) -> bool:
         """运行Python脚本,并管理输出信息"""
@@ -392,19 +423,20 @@ class GAWorkflowExecutor:
         Returns:
             str: 应该使用的选择器名称
         """
-        selection_config = self.config.get('molecular_selection', {})
+        selection_config = self.config.get('selection', {})
+        single_obj_config = selection_config.get('single_objective_settings', {})
         
         # 检查是否启用动态选择
-        if not selection_config.get('enable_dynamic_selection', False):
+        if not single_obj_config.get('enable_dynamic_selection', False):
             # 动态选择关闭，使用静态默认值
-            selector = selection_config.get('selector_choice', 'Rank_Selector')
+            selector = single_obj_config.get('selector_choice', 'Rank_Selector')
             logger.debug(f"第 {generation} 代: 使用静态选择策略 -> {selector}")
             return selector
         
         # 动态选择已启用
-        transition_gen = selection_config.get('dynamic_selection_transition_generation', 3)
-        early_selector = selection_config.get('early_stage_selector', 'Roulette_Selector')
-        late_selector = selection_config.get('late_stage_selector', 'Rank_Selector')
+        transition_gen = single_obj_config.get('dynamic_selection_transition_generation', 3)
+        early_selector = single_obj_config.get('early_stage_selector', 'Roulette_Selector')
+        late_selector = single_obj_config.get('late_stage_selector', 'Rank_Selector')
         
         if generation < transition_gen:
             logger.info(f"第 {generation} 代 (早期探索阶段): 使用多样性选择策略 -> {early_selector}")
@@ -431,26 +463,58 @@ class GAWorkflowExecutor:
         gen_dir = self.output_dir / f"generation_{generation}"
         next_parents_file = gen_dir / f"next_generation_parents.smi"
         
-        # 构建选择脚本的参数列表
-        selection_args = [
-            '--docked_file', offspring_docked_file,
-            '--parent_file', parent_docked_file,
-            '--output_file', str(next_parents_file),
-            '--config_file', self.config_path
-        ]
+        # 更新：从新的'selection'配置块中读取模式
+        selection_config = self.config.get('selection', {})
+        selection_mode = selection_config.get('selection_mode', 'single_objective')
         
-        # 如果提供了选择器覆盖参数，添加到命令行参数中
-        if selector_override:
-            selection_args.extend(['--selector_override', selector_override])
-        
-        selection_succeeded = self._run_script('operations/selecting/molecular_selection.py', selection_args)
+        if selection_mode == 'single_objective':
+            # 单目标选择：使用molecular_selection.py
+            # 更新：从新的结构中获取单目标设置
+            single_obj_config = selection_config.get('single_objective_settings', {})
+            
+            selection_args = [
+                '--docked_file', offspring_docked_file,
+                '--parent_file', parent_docked_file,
+                '--output_file', str(next_parents_file),
+                # 传递config_path，让选择脚本可以自己读取详细参数
+                '--config_file', self.config_path 
+            ]
+            
+            # 如果提供了选择器覆盖参数，添加到命令行参数中
+            if selector_override:
+                selection_args.extend(['--selector_override', selector_override])
+            
+            selection_succeeded = self._run_script('operations/selecting/molecular_selection.py', selection_args)
+            
+        elif selection_mode == 'multi_objective':
+            # 多目标选择：使用selecting_multi_demo.py
+            # 更新：从新的结构中获取多目标设置
+            multi_obj_config = selection_config.get('multi_objective_settings', {})
+            n_select = multi_obj_config.get('n_select', 50)
+            
+            selection_args = [
+                '--docked_file', offspring_docked_file,
+                '--parent_file', parent_docked_file,
+                '--output_file', str(next_parents_file),
+                '--n_select', str(n_select),
+                '--output_format', 'with_scores'  # 确保输出格式包含分数
+            ]
+            
+            if multi_obj_config.get('verbose', False):
+                selection_args.append('--verbose')
+            
+            selection_succeeded = self._run_script('operations/selecting/selecting_multi_demo.py', selection_args)
+            
+        else:
+            logger.error(f"不支持的选择模式: {selection_mode}")
+            return None
         
         selected_count = self._count_molecules(str(next_parents_file))
         if not selection_succeeded or selected_count == 0:
             logger.error("选择操作失败或未选出任何分子。")
             return None
         
-        logger.info(f"选择操作完成: 选出 {selected_count} 个下一代父代")
+        logger.info(f"选择操作完成 ({selection_mode}): 选出 {selected_count} 个下一代父代")
         
         return str(next_parents_file)
     

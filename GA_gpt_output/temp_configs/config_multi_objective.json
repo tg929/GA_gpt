@@ -7,7 +7,7 @@
     "number_of_processors": null,
     "max_variants_per_compound": 3,
     "gypsum_thoroughness": 3,
-    "gypsum_timeout_limit": 120,
+    "gypsum_timeout_limit": 15,
     "min_ph": 6.4,
     "max_ph": 8.4,
     "pka_precision": 1.0,
@@ -31,10 +31,21 @@
       "size_y": 16.0,
       "size_z": 25.0
     },
-    "target_list": {      
+    "target_list": {
+      "parp1": {
+        "name": "parp1",
+        "description": "parp1 receptor",
+        "file": "tutorial/PARP/4r6eA_PARP1_prepared.pdb",
+        "center_x": -70.76,
+        "center_y": 21.82,
+        "center_z": 28.33,
+        "size_x": 25.0,
+        "size_y": 16.0,
+        "size_z": 25.0
+      },
       "4r6e": {
         "name": "4r6e",
-        "description": "4r6e receptor", 
+        "description": "4r6e receptor",
         "file": "pdb/4r6e.pdb",
         "center_x": -70.76,
         "center_y": 21.82,
@@ -46,7 +57,7 @@
       "3pbl": {
         "name": "3pbl",
         "description": "3pbl receptor",
-        "file": "pdb/3pbl.pdb", 
+        "file": "pdb/3pbl.pdb",
         "center_x": 9.0,
         "center_y": 22.5,
         "center_z": 26.0,
@@ -66,7 +77,7 @@
         "size_z": 15.0
       },
       "2rgp": {
-        "name": "2rgp", 
+        "name": "2rgp",
         "description": "2rgp receptor",
         "file": "pdb/2rgp.pdb",
         "center_x": 16.29212,
@@ -78,7 +89,7 @@
       },
       "3eml": {
         "name": "3eml",
-        "description": "3eml receptor", 
+        "description": "3eml receptor",
         "file": "pdb/3eml.pdb",
         "center_x": -9.06363,
         "center_y": -7.14446,
@@ -90,7 +101,7 @@
       "3ny8": {
         "name": "3ny8",
         "description": "3ny8 receptor",
-        "file": "pdb/3ny8.pdb", 
+        "file": "pdb/3ny8.pdb",
         "center_x": 2.2488,
         "center_y": 4.68495,
         "center_z": 51.382000000001,
@@ -183,21 +194,15 @@
     "target_diversity": 0.7,
     "target_exploitation": 0.3
   },
-  "selection": {
-    "description": "Central configuration for all molecular selection strategies.",
-    "available_modes": [
-      "single_objective",
-      "multi_objective"
-    ],
+  "molecular_selection": {
+    "description": "Parameters for molecular selection.",
     "selection_mode": "multi_objective",
-
+    "available_selectors": [
+      "Rank_Selector",
+      "Roulette_Selector",
+      "Tournament_Selector"
+    ],
     "single_objective_settings": {
-      "description": "Parameters for single-objective selection based on docking score.",
-      "available_selectors": [
-        "Rank_Selector",
-        "Roulette_Selector",
-        "Tournament_Selector"
-      ],
       "n_select": 50,
       "selector_choice": "Rank_Selector",
       "tourn_size": 0.1,
@@ -205,30 +210,40 @@
       "dynamic_selection_transition_generation": 3,
       "early_stage_selector": "Roulette_Selector",
       "late_stage_selector": "Rank_Selector"
-    },
-    "multi_objective_settings": {
-      "description": "Parameters for multi-objective molecular selection using NSGA-II.",
-      "n_select": 50,
-      "objectives": [
-        {
-          "name": "docking_score",
-          "direction": "minimize",
-          "weight": 1.0
-        },
-        {
-          "name": "qed_score",
-          "direction": "maximize",
-          "weight": 1.0
-        },
-        {
-          "name": "sa_score",
-          "direction": "minimize",
-          "weight": 1.0
-        }
-      ],
-      "enable_crowding_distance": true,
-      "verbose": false
     }
+  },
+  "multi_objective_settings": {
+    "description": "Parameters for multi-objective molecular selection using NSGA-II.",
+    "n_select": 50,
+    "objectives": [
+      {
+        "name": "docking_score",
+        "direction": "minimize",
+        "weight": 1.0
+      },
+      {
+        "name": "qed_score",
+        "direction": "maximize",
+        "weight": 1.0
+      },
+      {
+        "name": "sa_score",
+        "direction": "minimize",
+        "weight": 1.0
+      }
+    ],
+    "enable_crowding_distance": true,
+    "verbose": false
+  },
+  "selection": {
+    "population_size": 120,
+    "selection_strategy": "best",
+    "n_select_fitness": 50,
+    "n_select_diversity": 25,
+    "nsga2_population_size": 100,
+    "nsga2_generations": 50,
+    "add_scores": true,
+    "verbose": false
   },
   "gpt": {
     "mask_last_n_fragments": 1,

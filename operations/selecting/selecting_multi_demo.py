@@ -128,17 +128,18 @@ def load_molecules_with_scores(docked_file):
     """
     从对接结果文件中加载分子及其分数    
     Args:
-        docked_file: 对接结果文件路径，格式为 "SMILES score"    
+        docked_file: 对接结果文件路径，格式为 "SMILES score" 或 "SMILES\tscore"
     Returns:
         list: 分子数据列表,每个元素包含SMILES和对接分数
     """
     molecules = []    
     try:
         with open(docked_file, 'r') as f:
-            for line in f:
+            for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if line:
-                    parts = line.split()
+                    # 支持空格或制表符分隔
+                    parts = line.replace('\t', ' ').split()
                     if len(parts) >= 2:
                         smiles = parts[0]
                         try:
@@ -148,11 +149,40 @@ def load_molecules_with_scores(docked_file):
                                 'docking_score': docking_score
                             })
                         except ValueError:
-                            print(f"警告: 无法解析分数 {parts[1]} for SMILES {smiles}")
+                            logger.warning(f"第{line_num}行: 无法解析分数 '{parts[1]}' for SMILES {smiles}")
+                    else:
+                        logger.warning(f"第{line_num}行: 格式不正确，跳过: {line}")
     except FileNotFoundError:
-        print(f"错误: 找不到文件 {docked_file}")
+        logger.error(f"错误: 找不到文件 {docked_file}")
         return []    
     return molecules
+
+def load_molecules_from_combined_files(parent_file: str, docked_file: str):
+    """
+    合并父代和子代分子数据进行统一选择
+    
+    Args:
+        parent_file: 父代文件路径 (格式: SMILES score)
+        docked_file: 子代对接结果文件路径 (格式: SMILES score)
+        
+    Returns:
+        list: 合并后的分子数据列表
+    """
+    all_molecules = []
+    
+    # 加载父代分子
+    parent_molecules = load_molecules_with_scores(parent_file)
+    logger.info(f"从父代文件加载了 {len(parent_molecules)} 个分子")
+    all_molecules.extend(parent_molecules)
+    
+    # 加载子代分子  
+    offspring_molecules = load_molecules_with_scores(docked_file)
+    logger.info(f"从子代文件加载了 {len(offspring_molecules)} 个分子")
+    all_molecules.extend(offspring_molecules)
+    
+    logger.info(f"总计加载了 {len(all_molecules)} 个候选分子")
+    return all_molecules
+
 def calculate_qed_score(smiles):
     """计算QED分数"""
     try:
@@ -190,12 +220,32 @@ def add_additional_scores(molecules):
     print(f"完成所有 {len(molecules)} 个分子的分数计算")
     return molecules
 def save_selected_molecules(selected_molecules, output_file):
-    """保存选中的分子到文件"""
+    """保存选中的分子到文件（仅SMILES格式）"""
     with open(output_file, 'w') as f:
         for mol_data in selected_molecules:
             f.write(f"{mol_data['smiles']}\n")
     
-    print(f"已保存 {len(selected_molecules)} 个选中的分子到 {output_file}")
+    logger.info(f"已保存 {len(selected_molecules)} 个选中的分子到 {output_file}")
+
+def save_selected_molecules_with_scores(selected_molecules, output_file):
+    """
+    保存选中的分子及其完整分数信息到文件
+    
+    Args:
+        selected_molecules: 选中的分子数据列表
+        output_file: 输出文件路径
+        
+    输出格式: SMILES\tdocking_score\tqed_score\tsa_score
+    """
+    with open(output_file, 'w') as f:
+        for mol_data in selected_molecules:
+            smiles = mol_data['smiles']
+            docking = mol_data['docking_score']
+            qed = mol_data.get('qed_score', 0.0)
+            sa = mol_data.get('sa_score', 5.0)
+            f.write(f"{smiles}\t{docking:.4f}\t{qed:.4f}\t{sa:.4f}\n")
+    
+    logger.info(f"已保存 {len(selected_molecules)} 个选中的分子及分数到 {output_file}")
 
 def print_selection_statistics(selected_molecules):
     """打印选择统计信息"""
@@ -216,34 +266,58 @@ def main():
     parser = argparse.ArgumentParser(description='基于NSGA-II的多目标分子选择')    
     # 输入输出参数
     parser.add_argument('--docked_file', type=str, required=True,
-                       help='对接结果文件路径（格式: SMILES score)')
+                       help='子代对接结果文件路径（格式: SMILES score)')
+    parser.add_argument('--parent_file', type=str, required=False,
+                       help='父代文件路径（格式: SMILES score)')
     parser.add_argument('--output_file', type=str, required=True,
-                       help='输出的种子分子文件路径')    
+                       help='输出的下一代父代文件路径')    
     # 选择参数
     parser.add_argument('--n_select', type=int, required=True,
                        help='要选择的分子数量')    
+    # 输出格式选择
+    parser.add_argument('--output_format', type=str, choices=['smiles_only', 'with_scores'], 
+                       default='with_scores',
+                       help='输出格式：仅SMILES或包含分数 (默认: with_scores)')
+    
     # 其他参数
     parser.add_argument('--verbose', action='store_true', default=False,
                        help='显示详细信息')    
     args = parser.parse_args()    
-    print("开始基于NSGA-II的多目标分子选择...")
-    print(f"输入文件: {args.docked_file}")
-    print(f"输出文件: {args.output_file}")    
-    # 1. 加载分子及对接分数
-    molecules = load_molecules_with_scores(args.docked_file)
+    
+    logger.info("开始基于NSGA-II的多目标分子选择...")
+    logger.info(f"子代文件: {args.docked_file}")
+    if args.parent_file:
+        logger.info(f"父代文件: {args.parent_file}")
+    logger.info(f"输出文件: {args.output_file}")    
+    
+    # 1. 加载分子数据
+    if args.parent_file:
+        # 如果提供了父代文件，合并父代和子代
+        molecules = load_molecules_from_combined_files(args.parent_file, args.docked_file)
+    else:
+        # 仅使用子代文件
+        molecules = load_molecules_with_scores(args.docked_file)
+        logger.info(f"仅使用子代文件，加载了 {len(molecules)} 个分子")
+    
     if not molecules:
-        print("错误: 无法加载分子数据")
+        logger.error("错误: 无法加载分子数据")
         return    
-    print(f"加载了 {len(molecules)} 个分子")    
+    
     # 2. 计算QED和SA分数
     molecules = add_additional_scores(molecules)    
+    
     # 3. 使用NSGA-II进行多目标选择
     selected_molecules = select_molecules_nsga2(molecules, args.n_select)    
+    
     # 4. 保存结果
     if selected_molecules:
-        save_selected_molecules(selected_molecules, args.output_file)
+        if args.output_format == 'smiles_only':
+            save_selected_molecules(selected_molecules, args.output_file)
+        else:
+            save_selected_molecules_with_scores(selected_molecules, args.output_file)
         print_selection_statistics(selected_molecules)
     else:
-        print("错误: 未选择任何分子")
+        logger.error("错误: 未选择任何分子")
+
 if __name__ == "__main__":
     main()
