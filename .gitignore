@@ -15,3 +15,6 @@ tutorial
 *.pkl
 output_*/*
 GA_output_*/*
+GA_gpt_output/*
+GA_gpt_output_*/*
+GA_gpt_output*/*

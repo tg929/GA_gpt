@@ -1,25 +1,50 @@
 {
-  "docking": {
-    "dock_choice": "VinaDocking",
-    "conversion_choice": "MGLToolsConversion",
-    "docking_exhaustiveness": 8,
-    "docking_num_modes": 9,
-    "number_of_processors": null,
-    "max_variants_per_compound": 3,
-    "gypsum_thoroughness": 3,
-    "gypsum_timeout_limit": 15,
-    "min_ph": 6.4,
-    "max_ph": 8.4,
-    "pka_precision": 1.0,
-    "debug_mode": false,
-    "mgltools_dir": "mgltools_x86_64Linux2_1.5.6",
-    "mgl_python": "mgltools_x86_64Linux2_1.5.6/bin/pythonsh",
-    "prepare_receptor4.py": "mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_receptor4.py",
-    "prepare_ligand4.py": "mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_ligand4.py",
-    "docking_executable": "autogrow/docking/docking_executables/vina/autodock_vina_1_1_2_linux_x86/bin/vina",
-    "timeout_vs_gtimeout": "timeout"
+  "description": "GA-GPT混合分子生成系统专用配置文件",
+  "version": "1.0",
+  "workflow_type": "GA_GPT_hybrid",
+  
+  "paths": {
+    "project_root": ".",
+    "description": "项目根目录路径"
   },
+  
+  "workflow": {
+    "description": "GA-GPT混合工作流核心参数",
+    "max_generations": 5,
+    "population_size": 115,
+    "initial_population_file": "datasets/source_compounds/naphthalene_smiles.smi",
+    "output_directory": "GA_GPT_output",
+    "enable_gpt_generation": true,
+    "gpt_integration_mode": "additive",
+    "early_stopping_patience": 3,
+    "log_level": "INFO",
+    "save_intermediate_results": true,
+    "enable_adaptive_adjustment": true
+  },
+  
+  "gpt": {
+    "description": "GPT分子生成模块参数",
+    "n_fragments_to_mask": 1,
+    "seed": 42,
+    "device": "1",
+    "temperature": 1.0,
+    "dynamic_masking": {
+      "enable": true,
+      "initial_mask_fragments": 2,
+      "final_mask_fragments": 1
+    },
+    "model_settings": {
+      "max_seq_len": 1024,
+      "top_k": null,
+      "stream": false,
+      "rp": 1.0,
+      "kv_cache": true,
+      "is_simulation": true
+    }
+  },
+  
   "receptors": {
+    "description": "受体配置，支持多个对接目标",
     "default_receptor": {
       "name": "parp1",
       "description": "The primary default PARP1 receptor for initial runs.",
@@ -31,21 +56,10 @@
       "size_y": 16.0,
       "size_z": 25.0
     },
-    "target_list": {
-      "parp1": {
-        "name": "parp1",
-        "description": "parp1 receptor",
-        "file": "tutorial/PARP/4r6eA_PARP1_prepared.pdb",
-        "center_x": -70.76,
-        "center_y": 21.82,
-        "center_z": 28.33,
-        "size_x": 25.0,
-        "size_y": 16.0,
-        "size_z": 25.0
-      },
+    "target_list": {      
       "4r6e": {
         "name": "4r6e",
-        "description": "4r6e receptor",
+        "description": "4r6e receptor", 
         "file": "pdb/4r6e.pdb",
         "center_x": -70.76,
         "center_y": 21.82,
@@ -57,7 +71,7 @@
       "3pbl": {
         "name": "3pbl",
         "description": "3pbl receptor",
-        "file": "pdb/3pbl.pdb",
+        "file": "pdb/3pbl.pdb", 
         "center_x": 9.0,
         "center_y": 22.5,
         "center_z": 26.0,
@@ -77,7 +91,7 @@
         "size_z": 15.0
       },
       "2rgp": {
-        "name": "2rgp",
+        "name": "2rgp", 
         "description": "2rgp receptor",
         "file": "pdb/2rgp.pdb",
         "center_x": 16.29212,
@@ -89,7 +103,7 @@
       },
       "3eml": {
         "name": "3eml",
-        "description": "3eml receptor",
+        "description": "3eml receptor", 
         "file": "pdb/3eml.pdb",
         "center_x": -9.06363,
         "center_y": -7.14446,
@@ -101,7 +115,7 @@
       "3ny8": {
         "name": "3ny8",
         "description": "3ny8 receptor",
-        "file": "pdb/3ny8.pdb",
+        "file": "pdb/3ny8.pdb", 
         "center_x": 2.2488,
         "center_y": 4.68495,
         "center_z": 51.382000000001,
@@ -155,7 +169,31 @@
       }
     }
   },
+  
+  "docking": {
+    "description": "分子对接参数配置",
+    "dock_choice": "VinaDocking",
+    "conversion_choice": "MGLToolsConversion",
+    "docking_exhaustiveness": 8,
+    "docking_num_modes": 9,
+    "number_of_processors": null,
+    "max_variants_per_compound": 3,
+    "gypsum_thoroughness": 3,
+    "gypsum_timeout_limit": 120,
+    "min_ph": 6.4,
+    "max_ph": 8.4,
+    "pka_precision": 1.0,
+    "debug_mode": false,
+    "mgltools_dir": "mgltools_x86_64Linux2_1.5.6",
+    "mgl_python": "mgltools_x86_64Linux2_1.5.6/bin/pythonsh",
+    "prepare_receptor4.py": "mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_receptor4.py",
+    "prepare_ligand4.py": "mgltools_x86_64Linux2_1.5.6/MGLToolsPckgs/AutoDockTools/Utilities24/prepare_ligand4.py",
+    "docking_executable": "autogrow/docking/docking_executables/vina/autodock_vina_1_1_2_linux_x86/bin/vina",
+    "timeout_vs_gtimeout": "timeout"
+  },
+  
   "crossover_finetune": {
+    "description": "GA交叉操作参数 (针对GA-GPT优化)",
     "crossover_attempts": 100,
     "crossover_rate": 0.8,
     "min_atom_match_mcs": 4,
@@ -168,7 +206,9 @@
     "max_attempts_multiplier": 10,
     "merge_attempts": 3
   },
+  
   "mutation_finetune": {
+    "description": "GA突变操作参数 (针对GA-GPT优化)",
     "mutation_attempts": 100,
     "max_mutations_per_parent": 2,
     "rxn_library": "all_rxns",
@@ -179,7 +219,9 @@
     "function_group_library": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/All_Rxns_functional_groups.json",
     "complementary_mol_directory": "autogrow/operators/mutation/smiles_click_chem/reaction_libraries/all_rxns/complementary_mol_dir"
   },
+  
   "filter": {
+    "description": "分子过滤参数",
     "enable_lipinski_strict": false,
     "enable_lipinski_lenient": true,
     "enable_ghose": false,
@@ -194,15 +236,22 @@
     "target_diversity": 0.7,
     "target_exploitation": 0.3
   },
-  "molecular_selection": {
-    "description": "Parameters for molecular selection.",
-    "selection_mode": "multi_objective",
-    "available_selectors": [
-      "Rank_Selector",
-      "Roulette_Selector",
-      "Tournament_Selector"
+  
+  "selection": {
+    "description": "Central configuration for all molecular selection strategies.",
+    "available_modes": [
+      "single_objective",
+      "multi_objective"
     ],
+    "selection_mode": "single_objective",
+    
     "single_objective_settings": {
+      "description": "Parameters for single-objective selection based on docking score.",
+      "available_selectors": [
+        "Rank_Selector",
+        "Roulette_Selector",
+        "Tournament_Selector"
+      ],
       "n_select": 50,
       "selector_choice": "Rank_Selector",
       "tourn_size": 0.1,
@@ -210,55 +259,61 @@
       "dynamic_selection_transition_generation": 3,
       "early_stage_selector": "Roulette_Selector",
       "late_stage_selector": "Rank_Selector"
+    },
+    
+    "multi_objective_settings": {
+      "description": "Parameters for multi-objective molecular selection using NSGA-II.",
+      "n_select": 50,
+      "objectives": [
+        {
+          "name": "docking_score",
+          "direction": "minimize",
+          "weight": 1.0
+        },
+        {
+          "name": "qed_score",
+          "direction": "maximize",
+          "weight": 1.0
+        },
+        {
+          "name": "sa_score",
+          "direction": "minimize",
+          "weight": 1.0
+        }
+      ],
+      "enable_crowding_distance": true,
+      "verbose": false
     }
   },
-  "multi_objective_settings": {
-    "description": "Parameters for multi-objective molecular selection using NSGA-II.",
-    "n_select": 50,
-    "objectives": [
-      {
-        "name": "docking_score",
-        "direction": "minimize",
-        "weight": 1.0
-      },
-      {
-        "name": "qed_score",
-        "direction": "maximize",
-        "weight": 1.0
-      },
-      {
-        "name": "sa_score",
-        "direction": "minimize",
-        "weight": 1.0
-      }
-    ],
-    "enable_crowding_distance": true,
-    "verbose": false
+  
+  "molecular_selection": {
+    "description": "兼容molecular_selection.py脚本的参数配置",
+    "n_select": 115,
+    "selector_choice": "Rank_Selector",
+    "tourn_size": 0.1
   },
-  "selection": {
-    "population_size": 120,
-    "selection_strategy": "best",
-    "n_select_fitness": 50,
-    "n_select_diversity": 25,
-    "nsga2_population_size": 100,
-    "nsga2_generations": 50,
-    "add_scores": true,
-    "verbose": false
+  
+  "fragmentation": {
+    "description": "分子片段分解参数",
+    "enable_flexible_masking": true,
+    "default_fragments_to_mask": 1,
+    "min_fragments_for_processing": 2,
+    "fragmentation_method": "BRICS"
   },
-  "gpt": {
-    "mask_last_n_fragments": 1,
-    "model_path": "fragment_GPT/models/",
-    "temperature": 0.8,
-    "max_length": 128,
-    "num_generated_per_input": 10
-  },
-  "workflow": {
-    "initial_population_file": "datasets/source_compounds/naphthalene_smiles.smi",
-    "output_directory": "GA_gpt_output",
-    "max_generations": 5,
-    "early_stopping_patience": 3,
+  
+  "logging": {
+    "description": "日志和调试配置",
     "log_level": "INFO",
     "save_intermediate_results": true,
-    "enable_adaptive_adjustment": true
+    "enable_detailed_timing": false,
+    "output_generation_reports": true
+  },
+  
+  "performance": {
+    "description": "性能优化参数",
+    "parallel_processing": false,
+    "batch_size": 32,
+    "memory_optimization": true,
+    "cleanup_intermediate_files": false
   }
-}
+} 
