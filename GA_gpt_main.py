@@ -37,14 +37,10 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
     
-    parser.add_argument('--config', type=str, default='GA_gpt/config_GA_gpt.json',
-                        help='主配置文件的路径。')
-    parser.add_argument('--receptor', type=str, default=None,
-                        help='(可选) 指定要运行的目标受体名称。如果未提供，将使用默认受体。')
-    parser.add_argument('--all_receptors', action='store_true',
-                        help='(可选) 运行配置文件中`target_list`的所有受体。如果使用此选项，将忽略--receptor参数。')
-    parser.add_argument('--output_dir', type=str, default=None,
-                        help='(可选) 指定输出总目录，每个受体的结果将在此目录下创建子文件夹。')
+    parser.add_argument('--config', type=str, default='GA_gpt/config_GA_gpt.json', help='主配置文件的路径。')
+    parser.add_argument('--receptor', type=str, default=None, help='(可选) 指定要运行的目标受体名称。如果未提供，将使用默认受体。')
+    parser.add_argument('--all_receptors', action='store_true', help='(可选) 运行配置文件中`target_list`的所有受体。如果使用此选项，将忽略--receptor参数。')
+    parser.add_argument('--output_dir', type=str, default=None, help='(可选) 指定输出总目录，每个受体的结果将在此目录下创建子文件夹。')
 
     args = parser.parse_args()
 
@@ -81,7 +77,7 @@ def main():
         receptor_display_name = receptor_name if receptor_name else default_name
 
         logger.info("=" * 80)
-        logger.info(f"🚀 开始为受体 '{receptor_display_name}' 运行GA-GPT混合工作流")
+        logger.info(f"开始为受体 '{receptor_display_name}' 运行GA-GPT混合工作流")
         logger.info(f"使用配置文件: {args.config}")
         logger.info("=" * 80)
     
@@ -98,12 +94,12 @@ def main():
             
             if success:
                 logger.info("-" * 60)
-                logger.info(f"✅ 针对受体 '{receptor_display_name}' 的GA-GPT工作流成功完成!")
+                logger.info(f"针对受体 '{receptor_display_name}' 的GA-GPT工作流成功完成!")
                 logger.info("-" * 60)
                 successful_runs.append(receptor_display_name)
             else:
                 logger.error("=" * 60)
-                logger.error(f"❌ 针对受体 '{receptor_display_name}' 的GA-GPT工作流执行失败。")
+                logger.error(f"针对受体 '{receptor_display_name}' 的GA-GPT工作流执行失败。")
                 logger.error("=" * 60)
                 failed_runs.append(receptor_display_name)
                 
@@ -114,8 +110,8 @@ def main():
     # --- 3. 最终总结报告 ---
     logger.info("=" * 80)
     logger.info("所有GA-GPT工作流执行完毕。")
-    logger.info(f"🟢 成功运行的受体 ({len(successful_runs)}): {successful_runs}")
-    logger.info(f"🔴 失败的受体 ({len(failed_runs)}): {failed_runs}")
+    logger.info(f"成功运行的受体 ({len(successful_runs)}): {successful_runs}")
+    logger.info(f"失败的受体 ({len(failed_runs)}): {failed_runs}")
     logger.info("=" * 80)
 
     if failed_runs:

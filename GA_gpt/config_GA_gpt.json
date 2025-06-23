@@ -1,17 +1,14 @@
 {
   "description": "GA-GPT混合分子生成系统专用配置文件",
   "version": "1.0",
-  "workflow_type": "GA_GPT_hybrid",
-  
+  "workflow_type": "GA_GPT_hybrid",  
   "paths": {
     "project_root": ".",
     "description": "项目根目录路径"
-  },
-  
+  },  
   "workflow": {
     "description": "GA-GPT混合工作流核心参数",
-    "max_generations": 5,
-    "population_size": 115,
+    "max_generations": 10,
     "initial_population_file": "datasets/source_compounds/naphthalene_smiles.smi",
     "output_directory": "GA_GPT_output",
     "enable_gpt_generation": true,
@@ -250,20 +247,15 @@
       "available_selectors": [
         "Rank_Selector",
         "Roulette_Selector",
-        "Tournament_Selector"
-      ],
-      "n_select": 50,
+        "Tournament_Selector"],
+      "n_select": 100,
       "selector_choice": "Rank_Selector",
-      "tourn_size": 0.1,
-      "enable_dynamic_selection": false,
-      "dynamic_selection_transition_generation": 3,
-      "early_stage_selector": "Roulette_Selector",
-      "late_stage_selector": "Rank_Selector"
+      "tourn_size": 0.1
     },
     
     "multi_objective_settings": {
       "description": "Parameters for multi-objective molecular selection using NSGA-II.",
-      "n_select": 50,
+      "n_select": 100,
       "objectives": [
         {
           "name": "docking_score",
@@ -284,13 +276,6 @@
       "enable_crowding_distance": true,
       "verbose": false
     }
-  },
-  
-  "molecular_selection": {
-    "description": "兼容molecular_selection.py脚本的参数配置",
-    "n_select": 115,
-    "selector_choice": "Rank_Selector",
-    "tourn_size": 0.1
   },
   
   "fragmentation": {

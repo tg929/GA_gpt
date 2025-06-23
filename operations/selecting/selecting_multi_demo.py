@@ -13,23 +13,21 @@ import os
 import sys
 import numpy as np
 from rdkit import Chem
-from rdkit.Chem import QED
 import logging
 from typing import List, Dict
+from tdc import Oracle
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 # 添加项目根目录到路径
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
-# 导入SA计算功能
-try:
-    from autogrow.operators.filter.execute_filters import sascorer
-    SA_CALCULATOR = sascorer.calculateScore
-    logger.info("SA scorer loaded from AutoGrow.")
-except ImportError:
-    logger.warning("Could not import SA scorer from AutoGrow. SA scores will not be calculated.")
-    SA_CALCULATOR = None
+
+# 使用TDC Oracle进行分子属性评估
+qed_evaluator = Oracle('qed')
+sa_evaluator = Oracle('sa')
+logger.info("已初始化TDC Oracle用于QED和SA分数计算。")
+
 def non_dominated_sort(objectives):
     """
     执行非支配排序    
@@ -183,44 +181,38 @@ def load_molecules_from_combined_files(parent_file: str, docked_file: str):
     logger.info(f"总计加载了 {len(all_molecules)} 个候选分子")
     return all_molecules
 
-def calculate_qed_score(smiles):
-    """计算QED分数"""
-    try:
-        mol = Chem.MolFromSmiles(smiles)
-        if mol is None:
-            return 0.0
-        return QED.qed(mol)
-    except:
-        return 0.0
-def calculate_sa_score(smiles):
-    """计算SA分数"""
-    if SA_CALCULATOR is None:
-        return 5.0  # 默认中等难度    
-    try:
-        mol = Chem.MolFromSmiles(smiles)
-        if mol is None:
-            return 10.0  # 最差SA分数
-        return SA_CALCULATOR(mol)
-    except:
-        return 10.0
-def add_additional_scores(molecules):
-    """为分子添加QED和SA分数"""
-    print("正在计算QED和SA分数...")
+def add_additional_scores(molecules: List[Dict]) -> List[Dict]:
+    """
+    使用TDC Oracle为分子批量添加QED和SA分数。
+
+    Args:
+        molecules: 包含分子SMILES的字典列表。
+
+    Returns:
+        更新了QED和SA分数的分子列表。
+    """
+    if not molecules:
+        return []
+
+    logger.info(f"开始为 {len(molecules)} 个分子批量计算QED和SA分数...")
     
+    # 提取所有SMILES用于批量处理
+    smiles_list = [m['smiles'] for m in molecules]
+    
+    # 使用TDC进行批量计算
+    qed_scores = qed_evaluator(smiles_list)
+    sa_scores = sa_evaluator(smiles_list)
+    
+    # 将计算出的分数分配回每个分子字典
     for i, mol_data in enumerate(molecules):
-        smiles = mol_data['smiles']        
-        # 计算QED分数
-        qed_score = calculate_qed_score(smiles)
-        mol_data['qed_score'] = qed_score        
-        # 计算SA分数
-        sa_score = calculate_sa_score(smiles)
-        mol_data['sa_score'] = sa_score        
-        if (i + 1) % 100 == 0:
-            print(f"已处理 {i + 1}/{len(molecules)} 个分子")    
-    print(f"完成所有 {len(molecules)} 个分子的分数计算")
+        mol_data['qed_score'] = qed_scores[i]
+        mol_data['sa_score'] = sa_scores[i]
+        
+    logger.info(f"完成所有 {len(molecules)} 个分子的分数计算。")
     return molecules
+
 def save_selected_molecules(selected_molecules, output_file):
-    """保存选中的分子到文件（仅SMILES格式）"""
+    """保存选中的分子到文件(仅SMILES格式)"""
     with open(output_file, 'w') as f:
         for mol_data in selected_molecules:
             f.write(f"{mol_data['smiles']}\n")
@@ -277,7 +269,7 @@ def main():
     # 输出格式选择
     parser.add_argument('--output_format', type=str, choices=['smiles_only', 'with_scores'], 
                        default='with_scores',
-                       help='输出格式：仅SMILES或包含分数 (默认: with_scores)')
+                       help='输出格式:仅SMILES或包含分数 (默认: with_scores)')
     
     # 其他参数
     parser.add_argument('--verbose', action='store_true', default=False,

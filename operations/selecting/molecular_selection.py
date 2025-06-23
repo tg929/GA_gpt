@@ -201,16 +201,11 @@ def print_selection_statistics(selected_molecules: List[List[str]]):
 
 def main():
     parser = argparse.ArgumentParser(description='多种分子选择算法 - 支持父代+子代合并选择')
-    parser.add_argument('--docked_file', type=str, required=True,
-                        help='子代对接结果文件路径（格式: SMILES score)')
-    parser.add_argument('--parent_file', type=str, default=None,
-                        help='父代对接结果文件路径（可选，格式: SMILES score)')
-    parser.add_argument('--output_file', type=str, required=True,
-                        help='输出的选中分子文件路径')
-    parser.add_argument('--config_file', type=str, default='GA_gpt/config_example.json',
-                        help='配置文件路径')
-    parser.add_argument('--selector_override', type=str, default=None,
-                        help='(可选) 强制使用指定的选择算法，覆盖配置文件中的设置')
+    parser.add_argument('--docked_file', type=str, required=True,help='子代对接结果文件路径（格式: SMILES score)')
+    parser.add_argument('--parent_file', type=str, default=None,help='父代对接结果文件路径（可选，格式: SMILES score)')
+    parser.add_argument('--output_file', type=str, required=True,help='输出的选中分子文件路径')
+    parser.add_argument('--config_file', type=str, default='GA_gpt/config_example.json',help='配置文件路径')
+    parser.add_argument('--selector_override', type=str, default=None, help='(可选) 强制使用指定的选择算法，覆盖配置文件中的设置')
     
     args = parser.parse_args()
 
@@ -218,21 +213,44 @@ def main():
     try:
         with open(args.config_file, 'r') as f:
             config = json.load(f)
-        selection_config = config.get("molecular_selection", {})
+            
+        # 智能适配不同配置文件结构
+        # 优先尝试新的GA-GPT配置结构 (selection.single_objective_settings)
+        selection_config = config.get("selection", {})
+        single_obj_settings = selection_config.get("single_objective_settings", {})
+        
+        if single_obj_settings:
+            # GA-GPT版本：使用selection.single_objective_settings
+            logger.info("检测到GA-GPT配置文件格式")
+            n_select = single_obj_settings.get('n_select', 100)
+            selector_choice_default = single_obj_settings.get('selector_choice', 'Rank_Selector')
+            tourn_size = single_obj_settings.get('tourn_size', 0.1)
+        else:
+            # GA版本：回退到molecular_selection配置块
+            molecular_selection_config = config.get("molecular_selection", {})
+            if molecular_selection_config:
+                logger.info("检测到GA版本配置文件格式")
+                n_select = molecular_selection_config.get('n_select', 100)
+                selector_choice_default = molecular_selection_config.get('selector_choice', 'Rank_Selector')
+                tourn_size = molecular_selection_config.get('tourn_size', 0.1)
+            else:
+                # 使用默认值
+                logger.warning("未检测到已知的配置格式，使用默认参数")
+                n_select = 100
+                selector_choice_default = 'Rank_Selector'
+                tourn_size = 0.1
+        
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.error(f"无法加载或解析配置文件 {args.config_file}: {e}")
         return
 
-    n_select = selection_config.get('n_select', 100)
     # 动态选择器决策逻辑：优先使用override参数，否则使用配置文件
     if args.selector_override:
         selector_choice = args.selector_override
         logger.info(f"使用外部指定的选择器: {selector_choice}")
     else:
-        selector_choice = selection_config.get('selector_choice', 'Rank_Selector')
+        selector_choice = selector_choice_default
         logger.info(f"使用配置文件中的选择器: {selector_choice}")
-    
-    tourn_size = selection_config.get('tourn_size', 0.1)
 
     logger.info(f"开始 {selector_choice} 分子选择...")
     logger.info(f"子代文件: {args.docked_file}")

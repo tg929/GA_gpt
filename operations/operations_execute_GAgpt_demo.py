@@ -3,12 +3,10 @@
 """
 GA-GPT 混合工作流执行脚本
 ==========================
-该脚本是GA-GPT混合分子生成项目的核心控制器。
-它编排了整个工作流程，包括：
 1. 种群初始化和评估
 2. 基于父代的分子分解与掩码
 3. 使用GPT模型生成新的、多样化的分子
-4. 对父代和GPT生成的分子进行遗传算法操作（交叉、突变）
+4. 对父代和GPT生成的分子进行遗传算法操作(交叉、突变)
 5. 对新生成的子代进行评估
 6. 通过选择策略（单目标或多目标）筛选出下一代种群
 """
@@ -19,27 +17,17 @@ import subprocess
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-
-# --- 日志配置 ---
+from operations.stating.config_snapshot_generator import save_config_snapshot
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# --- 项目根目录设置 ---
-# 将项目根目录添加到系统路径，以便导入其他模块
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# --- 导入项目模块 ---
-# 这里可以预先导入一些可能会用到的模块，如果用不到后面可以删掉
-from operations.stating.config_snapshot_generator import save_config_snapshot
 
-class GAGPTWorkflowExecutor:
-    """GA-GPT混合工作流执行器"""
-
+class GAGPTWorkflowExecutor:    
     def __init__(self, config_path: str, receptor_name: Optional[str] = None, output_dir_override: Optional[str] = None):
         """
-        初始化GA-GPT工作流执行器。
-        
+        初始化GA-GPT工作流执行器。        
         Args:
             config_path (str): 配置文件路径。
             receptor_name (Optional[str]): 目标受体名称。如果为None, 则使用默认受体。
@@ -48,35 +36,23 @@ class GAGPTWorkflowExecutor:
         self.config_path = config_path
         self.config = self._load_config()
         self.run_params = {}
-
         self._setup_parameters_and_paths(receptor_name, output_dir_override)
-        self._save_run_parameters()
-        
+        self._save_run_parameters()        
         logger.info(f"GA-GPT工作流初始化完成, 输出目录: {self.output_dir}")
         logger.info(f"最大迭代代数: {self.max_generations}")
 
     def _load_config(self) -> dict:
-        """加载JSON配置文件"""
-        try:
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"无法加载配置文件 {self.config_path}: {e}")
-            raise
+        with open(self.config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)       
 
-    def _setup_parameters_and_paths(self, receptor_name: Optional[str], output_dir_override: Optional[str]):
-        """
-        根据输入和配置,设置所有工作路径和运行参数。
-        """
+    def _setup_parameters_and_paths(self, receptor_name: Optional[str], output_dir_override: Optional[str]):        
         self.project_root = Path(self.config.get('paths', {}).get('project_root', PROJECT_ROOT))
         workflow_config = self.config.get('workflow', {})
         gpt_config = self.config.get('gpt', {})
         self.dynamic_masking_config = gpt_config.get('dynamic_masking', {'enable': False})
-
         # 记录配置和根目录
         self.run_params['config_file_path'] = self.config_path
         self.run_params['project_root'] = str(self.project_root)
-
         # 确定输出目录
         if output_dir_override:
             output_dir_name = output_dir_override
@@ -84,7 +60,6 @@ class GAGPTWorkflowExecutor:
             output_dir_name = workflow_config.get('output_directory', 'GA_GPT_output')
         base_output_dir = self.project_root / output_dir_name
         self.run_params['base_output_dir'] = str(base_output_dir)
-
         # 根据受体确定最终运行目录
         self.receptor_name = receptor_name
         if self.receptor_name:
@@ -96,55 +71,40 @@ class GAGPTWorkflowExecutor:
             default_receptor_name = default_receptor_info.get('name', 'default_run')
             self.output_dir = base_output_dir / default_receptor_name
             self.run_params['receptor_name'] = default_receptor_name
-
         self.run_params['run_specific_output_dir'] = str(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
         # 加载GA和GPT的核心参数
         self.max_generations = workflow_config.get('max_generations', 10)
         self.initial_population_file = workflow_config.get('initial_population_file')
-        self.population_size = workflow_config.get('population_size', 115)
-        
         self.run_params['max_generations'] = self.max_generations
         self.run_params['initial_population_file'] = self.initial_population_file
-        self.run_params['population_size'] = self.population_size
-
         # 记录选择模式
         selection_config = self.config.get('selection', {})
         self.run_params['selection_mode'] = selection_config.get('selection_mode', 'single_objective')
-
     def _get_dynamic_mask_count(self, generation: int) -> int:
         """
         根据当前代数计算动态掩码片段的数量。
         如果未启用动态掩码，则返回配置中的固定值。
-        
         Args:
-            generation (int): 当前的进化代数。
-            
+            generation (int): 当前的进化代数。            
         Returns:
             int: 应该用于掩码的片段数量。
         """
         if not self.dynamic_masking_config.get('enable', False) or self.max_generations <= 1:
             # 如果不启用或总代数只有1代，则使用固定的值
-            return self.config.get('gpt', {}).get('n_fragments_to_mask', 1)
-        
+            return self.config.get('gpt', {}).get('n_fragments_to_mask', 1)        
         initial_mask = self.dynamic_masking_config.get('initial_mask_fragments', 2)
-        final_mask = self.dynamic_masking_config.get('final_mask_fragments', 1)
-        
+        final_mask = self.dynamic_masking_config.get('final_mask_fragments', 1)        
         # 使用线性插值计算当前代数的掩码数
         # y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
-        # 这里 x=generation, x1=1, y1=initial_mask, x2=max_generations, y2=final_mask
-        
+        # 这里 x=generation, x1=1, y1=initial_mask, x2=max_generations, y2=final_mask        
         # 防止除以零
         if self.max_generations == 1:
-            return initial_mask
-            
+            return initial_mask            
         progress = (generation - 1) / (self.max_generations - 1)
-        mask_count = initial_mask + progress * (final_mask - initial_mask)
-        
+        mask_count = initial_mask + progress * (final_mask - initial_mask)        
         # 四舍五入到最近的整数，并确保结果在[final_mask, initial_mask]范围内
         return int(round(max(min(mask_count, initial_mask), final_mask)))
-
     def _save_run_parameters(self):
         """保存本次运行的完整参数快照。"""
         snapshot_file_path = self.output_dir / "execution_config_snapshot.json"
@@ -160,23 +120,18 @@ class GAGPTWorkflowExecutor:
 
     def _run_script(self, script_path: str, args: List[str]) -> bool:
         """
-        统一的脚本执行函数。
-        
+        统一的脚本执行函数。        
         Args:
             script_path (str): 相对于项目根目录的脚本路径。
-            args (List[str]): 脚本的命令行参数列表。
-            
+            args (List[str]): 脚本的命令行参数列表。            
         Returns:
             bool: 脚本是否执行成功。
         """
         full_script_path = self.project_root / script_path
-        cmd = ['python', str(full_script_path)] + args
-        
-        logger.debug(f"执行命令: {' '.join(cmd)}")
-        
+        cmd = ['python', str(full_script_path)] + args        
+        logger.debug(f"执行命令: {' '.join(cmd)}")        
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(self.project_root), check=False)
-            
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(self.project_root), check=False)            
             if result.returncode == 0:
                 logger.info(f"脚本 {script_path} 执行成功")
                 return True
@@ -189,7 +144,6 @@ class GAGPTWorkflowExecutor:
         except Exception as e:
             logger.error(f"执行脚本 {script_path} 时发生异常: {e}")
             return False
-
     def _count_molecules(self, file_path: str) -> int:
         """统计SMILES文件中的分子数量"""
         try:
@@ -198,7 +152,6 @@ class GAGPTWorkflowExecutor:
             return count
         except FileNotFoundError:
             return 0
-
     def _remove_duplicates_from_smiles_file(self, input_file: str, output_file: str) -> int:
         """
         去除SMILES文件中的重复分子,并为每个分子添加唯一ID。
@@ -210,14 +163,11 @@ class GAGPTWorkflowExecutor:
                 for line in f:
                     smiles = line.strip().split()[0]
                     if smiles:
-                        unique_smiles.add(smiles)
-            
-            unique_smiles_list = sorted(list(unique_smiles))
-            
+                        unique_smiles.add(smiles)            
+            unique_smiles_list = sorted(list(unique_smiles))            
             with open(output_file, 'w') as f:
                 for i, smiles in enumerate(unique_smiles_list):
-                    f.write(f"{smiles}\tligand_id_{i}\n")
-            
+                    f.write(f"{smiles}\tligand_id_{i}\n")            
             logger.info(f"去重完成: {len(unique_smiles_list)} 个独特分子保存到 {output_file}")
             return len(unique_smiles_list)
         except Exception as e:
@@ -225,7 +175,7 @@ class GAGPTWorkflowExecutor:
             return 0
 
     def _extract_smiles_from_docked_file(self, docked_file: str, output_smiles_file: str) -> bool:
-        """从带对接分数的文件中提取纯SMILES，用于遗传操作或分解"""
+        """从带对接分数的文件中提取纯SMILES,用于遗传操作或分解"""
         try:
             with open(docked_file, 'r') as infile, open(output_smiles_file, 'w') as outfile:
                 for line in infile:
@@ -240,107 +190,70 @@ class GAGPTWorkflowExecutor:
 
     def run_decomposition_and_masking(self, parent_smiles_file: str, generation: int) -> Optional[str]:
         """
-        执行分子分解和掩码操作。
-        
+        执行分子分解和掩码操作。        
         Args:
             parent_smiles_file (str): 父代SMILES文件路径。
-            generation (int): 当前代数。
-            
+            generation (int): 当前代数。            
         Returns:
             Optional[str]: 成功则返回掩码后片段文件的路径，失败则返回None。
         """
         logger.info(f"第 {generation} 代: 开始分解和掩码...")
         gen_dir = self.output_dir / f"generation_{generation}"
         gen_dir.mkdir(exist_ok=True)
-
-        masked_fragments_file = gen_dir / "masked_fragments.txt"
-        
+        masked_fragments_file = gen_dir / "masked_fragments.smi"        
         # -- 动态计算掩码数 --
         n_mask = self._get_dynamic_mask_count(generation)
-        logger.info(f"第 {generation} 代: 使用动态掩码数 n_mask = {n_mask}")
-        
+        logger.info(f"第 {generation} 代: 使用动态掩码数 n_mask = {n_mask}")        
         decompose_args = [
             '--input', parent_smiles_file,
             '--output3', str(masked_fragments_file), # 使用output3作为掩码文件的输出
-            '--mask_fragments', str(n_mask)
-        ]
-
+            '--mask_fragments', str(n_mask)]
         if not self._run_script('datasets/decompose/demo_frags.py', decompose_args):
             logger.error(f"第 {generation} 代: 分解和掩码失败。")
-            return None
-        
+            return None        
         if self._count_molecules(str(masked_fragments_file)) == 0:
             logger.warning(f"第 {generation} 代: 未生成任何有效的掩码片段。")
             return None
-
         logger.info(f"第 {generation} 代: 分解和掩码完成，结果保存至 {masked_fragments_file}")
         return str(masked_fragments_file)
-
     def run_gpt_generation(self, masked_fragments_file: str, generation: int) -> Optional[str]:
         """
-        使用GPT模型生成新分子。
-        
+        使用GPT模型生成新分子。        
         Args:
             masked_fragments_file (str): 掩码片段文件路径。
-            generation (int): 当前代数。
-            
+            generation (int): 当前代数。            
         Returns:
             Optional[str]: 成功则返回GPT生成的新分子文件路径，失败则返回None。
         """
         logger.info(f"第 {generation} 代: 开始GPT生成...")
         gen_dir = self.output_dir / f"generation_{generation}"
         gpt_output_dir = gen_dir / "gpt_generated"
-        gpt_output_dir.mkdir(exist_ok=True)
+        gpt_output_dir.mkdir(exist_ok=True)        
         
-        # 注意: fragment_GPT/generate_all.py的输出是固定的，需要找到它
-        # 这里我们假设它输出到 'fragment_GPT/output/crossovered0_frags_new_{seed}.smi'
         gpt_config = self.config.get('gpt', {})
-        seed = gpt_config.get('seed', generation) # 使用代数作为种子以保证可复现性
+        seed = gpt_config.get('seed', generation) # 使用代数作为种子以保证可复现性        
         
-        # 实际的GPT脚本输出路径
-        # TODO: 强烈建议将GPT脚本的输出路径改为通过命令行参数传递
-        gpt_script_output_dir = self.project_root / "fragment_GPT/output"
-        # 假设输出文件名格式，需要根据`generate_all.py`的实现来确定
-        expected_output_filename = f'crossovered0_frags_new_{seed}.smi'
-        expected_output_path = gpt_script_output_dir / expected_output_filename
-
-        # 执行前删除旧的输出文件，以确保我们得到的是本次运行的结果
-        if expected_output_path.exists():
-            expected_output_path.unlink()
-
+        # 定义GPT输出文件路径，不再硬编码和移动文件
+        gpt_generated_file = gpt_output_dir / "gpt_generated_molecules.smi"
         gpt_args = [
             '--input_file', masked_fragments_file,
-            '--seed', str(seed)
+            '--seed', str(seed),
+            '--output_file', str(gpt_generated_file)  # 直接传递输出路径
         ]
 
         if not self._run_script('fragment_GPT/generate_all.py', gpt_args):
             logger.error(f"第 {generation} 代: GPT生成脚本执行失败。")
-            return None
-        
-        # 检查预期的输出文件是否已生成
-        if not expected_output_path.exists():
-            logger.error(f"第 {generation} 代: GPT生成失败，未找到预期的输出文件: {expected_output_path}")
-            logger.error(f"请检查fragment_GPT脚本是否正常执行，以及输出目录 {gpt_script_output_dir} 是否存在")
-            return None
-            
-        # 将生成的文件移动到代数目录中并重命名
-        gpt_generated_file = gpt_output_dir / "gpt_generated_molecules.smi"
-        try:
-            import shutil
-            shutil.move(str(expected_output_path), str(gpt_generated_file))
-        except Exception as e:
-            logger.error(f"无法移动GPT生成的文件: {e}")
-            return None
+            return None        
 
+        # 检查指定的输出文件是否已生成且不为空
         generated_count = self._count_molecules(str(gpt_generated_file))
         if generated_count == 0:
             logger.warning(f"第 {generation} 代: GPT生成了0个有效分子。")
             # 不认为是致命错误，可以继续执行GA
             return None
             
-        logger.info(f"第 {generation} 代: GPT生成完成，产出 {generated_count} 个新分子。")
+        logger.info(f"第 {generation} 代: GPT生成完成,产出 {generated_count} 个新分子。")
         return str(gpt_generated_file)
-
     def _combine_files(self, file_list: List[str], output_file: str) -> bool:
         """合并多个SMILES文件到一个文件"""
         try:
@@ -357,7 +270,6 @@ class GAGPTWorkflowExecutor:
         except Exception as e:
             logger.error(f"合并文件时发生错误: {e}")
             return False
-
     def run_ga_operations(self, parent_smiles_file: str, gpt_generated_file: Optional[str], generation: int) -> Optional[Tuple[str, str]]:
         """
         执行遗传算法操作（交叉和突变）。
@@ -434,7 +346,7 @@ class GAGPTWorkflowExecutor:
 
     def run_offspring_evaluation(self, crossover_file: str, mutation_file: str, generation: int) -> Optional[str]:
         """
-        执行子代种群的评估（对接和评分）。
+        执行子代种群的评估（对接）。
         
         Args:
             crossover_file (str): 交叉后代文件路径。
@@ -483,16 +395,8 @@ class GAGPTWorkflowExecutor:
             logger.error(f"第 {generation} 代: 子代对接失败。")
             return None
 
-        # 4. 对接后评分分析
-        scoring_report_file = gen_dir / f"generation_{generation}_evaluation.txt"
-        self._run_script('operations/scoring/scoring_demo.py', [
-            '--current_population_docked_file', str(offspring_docked_file),
-            '--initial_population_file', self.initial_population_file,
-            '--output_file', str(scoring_report_file)
-        ]) # 评分失败不中断主流程
-
         docked_count = self._count_molecules(str(offspring_docked_file))
-        logger.info(f"第 {generation} 代: 子代评估完成，{docked_count} 个分子已评分。")
+        logger.info(f"第 {generation} 代: 子代评估完成，{docked_count} 个分子已对接。")
 
         return str(offspring_docked_file)
 
@@ -530,12 +434,13 @@ class GAGPTWorkflowExecutor:
         elif selection_mode == 'multi_objective':
             logger.info("执行多目标选择...")
             multi_obj_config = selection_config.get('multi_objective_settings', {})
-            n_select = multi_obj_config.get('n_select', self.population_size)
+            n_select = multi_obj_config.get('n_select', 100)
             selection_args = [
                 '--docked_file', offspring_docked_file,
                 '--parent_file', parent_docked_file,
                 '--output_file', str(next_parents_file),
-                '--n_select', str(n_select)
+                '--config_file', self.config_path,
+                '--n_select', str(n_select)  # 统一通过命令行传递
             ]
             selection_succeeded = self._run_script('operations/selecting/selecting_multi_demo.py', selection_args)
         
@@ -551,6 +456,31 @@ class GAGPTWorkflowExecutor:
         logger.info(f"选择操作完成 ({selection_mode}): 选出 {selected_count} 个分子作为下一代父代。")
         
         return str(next_parents_file)
+
+    def run_selected_population_evaluation(self, selected_parents_file: str, generation: int) -> bool:
+        """
+        对选择后的精英种群（下一代父代）进行评分分析        
+        Args:
+            selected_parents_file (str): 选择后的下一代父代文件路径
+            generation (int): 当前代数            
+        Returns:
+            bool: 评分分析是否成功
+        """
+        logger.info(f"第 {generation} 代: 开始对选择后的精英种群进行评分分析")
+        
+        gen_dir = self.output_dir / f"generation_{generation}"
+        scoring_report_file = gen_dir / f"generation_{generation}_evaluation.txt"
+        
+        scoring_succeeded = self._run_script('operations/scoring/scoring_demo.py', [
+            '--current_population_docked_file', str(selected_parents_file),
+            '--initial_population_file', self.initial_population_file,
+            '--output_file', str(scoring_report_file)
+        ])        
+        if scoring_succeeded:
+            logger.info(f"第 {generation} 代: 精英种群评分分析完成，报告保存到 {scoring_report_file}")
+        else:
+            logger.warning(f"第 {generation} 代: 精英种群评分分析失败，但不影响主流程")            
+        return scoring_succeeded
 
     def run_complete_workflow(self):
         """
@@ -636,18 +566,17 @@ class GAGPTWorkflowExecutor:
         logger.info(f"========== 开始第 {generation} 代进化 ==========")
         gen_dir = self.output_dir / f"generation_{generation}"
         gen_dir.mkdir(exist_ok=True)
-
         # 1. 从父代对接文件中提取纯SMILES
-        parent_smiles_file = gen_dir / "parent_smiles.smi"
+        parent_smiles_file = gen_dir / "current_parent_smiles.smi"
         if not self._extract_smiles_from_docked_file(current_parents_docked_file, str(parent_smiles_file)):
-            logger.error(f"第{generation}代: 无法从父代文件提取SMILES，工作流终止")
+            logger.error(f"第{generation}代: 无法从父代文件提取SMILES,工作流终止")
             return None
 
         # 2. 分解与掩码
         masked_file = self.run_decomposition_and_masking(str(parent_smiles_file), generation)
         if not masked_file:
             # 如果分解失败，可以决定是终止还是跳过GPT步骤
-            logger.warning(f"第{generation}代: 分解掩码步骤失败，将跳过GPT生成。")
+            logger.warning(f"第{generation}代: 分解掩码步骤失败,将跳过GPT生成。")
             gpt_generated_file = None
         else:
             # 3. GPT生成
@@ -661,7 +590,7 @@ class GAGPTWorkflowExecutor:
         
         crossover_file, mutation_file = ga_children_files
 
-        # 5. 子代评估
+        # 5. 子代评估（对接，但不进行评分分析）
         offspring_docked_file = self.run_offspring_evaluation(crossover_file, mutation_file, generation)
         if offspring_docked_file is None:
              logger.error(f"第{generation}代: 子代评估失败，工作流终止。")
@@ -676,6 +605,9 @@ class GAGPTWorkflowExecutor:
         if not next_parents_docked_file:
             logger.error(f"第{generation}代: 选择操作失败，工作流终止。")
             return None
+
+        # 7. 对选择后的精英种群进行评分分析（这是新的逻辑）
+        self.run_selected_population_evaluation(next_parents_docked_file, generation)
 
         logger.info(f"========== 第 {generation} 代进化完成 ==========")
         return next_parents_docked_file
@@ -703,7 +635,7 @@ def main():
             logger.error("GA-GPT工作流执行失败。")
             return 1
         
-        logger.info("GA-GPT工作流成功完成！")
+        logger.info("GA-GPT工作流成功完成!")
 
     except Exception as e:
         logger.critical(f"工作流执行过程中发生严重错误: {e}", exc_info=True)

@@ -190,25 +190,19 @@
       "multi_objective"
     ],
     "selection_mode": "multi_objective",
-
     "single_objective_settings": {
       "description": "Parameters for single-objective selection based on docking score.",
       "available_selectors": [
         "Rank_Selector",
         "Roulette_Selector",
-        "Tournament_Selector"
-      ],
-      "n_select": 50,
+        "Tournament_Selector" ],
+      "n_select": 100,
       "selector_choice": "Rank_Selector",
-      "tourn_size": 0.1,
-      "enable_dynamic_selection": false,
-      "dynamic_selection_transition_generation": 3,
-      "early_stage_selector": "Roulette_Selector",
-      "late_stage_selector": "Rank_Selector"
+      "tourn_size": 0.1
     },
     "multi_objective_settings": {
       "description": "Parameters for multi-objective molecular selection using NSGA-II.",
-      "n_select": 50,
+      "n_select": 100,
       "objectives": [
         {
           "name": "docking_score",
@@ -229,18 +223,11 @@
       "enable_crowding_distance": true,
       "verbose": false
     }
-  },
-  "gpt": {
-    "mask_last_n_fragments": 1,
-    "model_path": "fragment_GPT/models/",
-    "temperature": 0.8,
-    "max_length": 128,
-    "num_generated_per_input": 10
-  },
+  },  
   "workflow": {
     "initial_population_file": "datasets/source_compounds/naphthalene_smiles.smi",
-    "output_directory": "GA_gpt_output",
-    "max_generations": 5,
+    "output_directory": "GA_output",
+    "max_generations": 10,
     "early_stopping_patience": 3,
     "log_level": "INFO",
     "save_intermediate_results": true,
