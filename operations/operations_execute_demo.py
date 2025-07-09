@@ -12,6 +12,7 @@ import json
 import subprocess
 import logging
 import shutil
+import random
 from pathlib import Path
 from typing import List, Dict, Optional
 from operations.stating.config_snapshot_generator import save_config_snapshot
@@ -61,9 +62,27 @@ class GAWorkflowExecutor:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         # 4. 记录其他GA核心参数
         self.max_generations = workflow_config.get('max_generations', 5)
-        self.initial_population_file = workflow_config.get('initial_population_file', 'datasets/source_compounds/naphthalene_smiles.smi')
         self.run_params['max_generations'] = self.max_generations
-        self.run_params['initial_population_file'] = self.initial_population_file        
+        
+        # 确保初始种群文件路径是绝对路径,并进行存在性检查
+        initial_pop_path_str = workflow_config.get('initial_population_file')
+        if not initial_pop_path_str:
+            error_msg = "配置文件 'workflow' 部分缺少 'initial_population_file' 键。"
+            logger.critical(error_msg)
+            raise ValueError(error_msg)
+        
+        self.initial_population_file = self.project_root / initial_pop_path_str
+        if not self.initial_population_file.is_file():
+            error_msg = f"指定的初始种群文件不存在: {self.initial_population_file}"
+            logger.critical(error_msg)
+            raise FileNotFoundError(error_msg)
+            
+        self.run_params['initial_population_file'] = str(self.initial_population_file)
+
+        # 6. 新增：记录脚本执行超时时间 (从顶层配置获取)
+        self.script_timeout = self.config.get('script_timeout', 1800)
+        self.run_params['script_timeout'] = self.script_timeout
+        
         # 5. 记录实际使用的选择模式
         selection_config = self.config.get('selection', {})
         self.run_params['selection_mode'] = selection_config.get('selection_mode', 'single_objective')
@@ -77,7 +96,8 @@ class GAWorkflowExecutor:
             "run_specific_output_dir": self.run_params.get('run_specific_output_dir'),
             "max_generations": self.run_params.get('max_generations'),
             "initial_population_file": self.run_params.get('initial_population_file'),
-            "selection_mode": self.run_params.get('selection_mode')
+            "selection_mode": self.run_params.get('selection_mode'),
+            "script_timeout": self.run_params.get('script_timeout')
         }                
         snapshot_file_path = self.output_dir / "execution_config_snapshot.json"
         success = save_config_snapshot(
@@ -105,8 +125,23 @@ class GAWorkflowExecutor:
         # 将详细命令的日志级别降为DEBUG
         logger.debug(f"执行命令: {' '.join(cmd)}")        
         try:
+            # 创建一个受控的运行环境，限制子进程的线程数
+            run_env = os.environ.copy()
+            run_env["OPENBLAS_NUM_THREADS"] = "1"
+            run_env["MKL_NUM_THREADS"] = "1"
+            run_env["OMP_NUM_THREADS"] = "1"
+            
             # 捕获输出，但在成功时不显示stdout/stderr，以保持日志整洁
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(self.project_root), check=False)            
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                cwd=str(self.project_root), 
+                check=False,
+                env=run_env,  # 传入受控的环境变量
+                timeout=self.script_timeout  # 使用配置的超时时间
+            )
+            
             if result.returncode == 0:
                 logger.info(f"脚本 {script_path} 执行成功")
                 # 如果需要，可以记录一些关键的stdout信息
@@ -119,6 +154,12 @@ class GAWorkflowExecutor:
                 if result.stdout:
                     logger.error(f"标准输出 (stdout):\n{result.stdout}")
                 return False
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"脚本 {script_path} 执行超时 ({self.script_timeout}秒)。命令: {' '.join(cmd)}")
+            logger.error(f"超时错误的输出 (stderr):\n{e.stderr}")
+            if e.stdout:
+                logger.error(f"超时错误的标准输出 (stdout):\n{e.stdout}")
+            return False
         except Exception as e:
             logger.error(f"执行脚本 {script_path} 时发生异常: {e}")
             return False
@@ -390,52 +431,115 @@ class GAWorkflowExecutor:
         scoring_report_file = gen_dir / f"generation_{generation}_evaluation.txt"
         
         scoring_succeeded = self._run_script('operations/scoring/scoring_demo.py', [
-            '--current_population_docked_file', str(selected_parents_file),
-            '--initial_population_file', self.initial_population_file,
-            '--output_file', str(scoring_report_file)
-        ])        
-        if scoring_succeeded:
-            logger.info(f"第{generation}代精英种群评分分析完成: 报告保存到 {scoring_report_file}")
+            '--smiles_file', str(selected_parents_file),
+            '--output_dir', str(self.output_dir / f"generation_{generation}"),
+            '--config_file', str(self.config_path)
+        ])
+
+        if not scoring_succeeded:
+            logger.warning(f"第{generation}代精英种群的评分分析失败。")
         else:
-            logger.warning(f"第{generation}代精英种群评分分析失败")            
+            logger.info(f"第{generation}代精英种群评分分析完成: 报告保存到 {scoring_report_file}")
+            
         return scoring_succeeded
+
+    def _prepare_initial_population(self):
+        """
+        根据配置准备初始种群文件。
+        如果配置了抽样，则从源文件中随机抽取指定数量的分子作为初始种群。
+        7-9:已提前抽取/准备好初始文件，所以目前代码注释掉随机抽样部分
+        """
+        workflow_config = self.config.get('workflow', {})
+        if not workflow_config.get('use_sampled_initial_population', False):
+            logger.info("使用配置文件中指定的现有初始种群文件。")
+            return
+
+        # source_file = self.project_root / workflow_config.get('source_population_for_sampling')
+        target_file = self.project_root / self.initial_population_file
+        # num_to_sample = workflow_config.get('num_to_sample_for_initial_population', 200)
+
+        if target_file.exists():
+            logger.info(f"已存在抽样后的初始种群文件: {target_file}, 将直接使用。")
+            return
+        ######抽样得到初始种群
+        # logger.info(f"正在从 {source_file} 中随机抽取 {num_to_sample} 个分子作为初始种群...")        
+        # if not source_file.exists():
+        #     raise FileNotFoundError(f"用于抽样的源文件不存在: {source_file}")
+        # try:
+        #     with open(source_file, 'r', encoding='utf-8') as f:
+        #         lines = f.readlines()
+            
+        #     if len(lines) < num_to_sample:
+        #         logger.warning(f"源文件中的分子数量 ({len(lines)}) 小于要求抽样的数量 ({num_to_sample})，将使用所有分子。")
+        #         sampled_lines = lines
+        #     else:
+        #         sampled_lines = random.sample(lines, num_to_sample)
+
+        #     target_file.parent.mkdir(parents=True, exist_ok=True)
+            
+        #     with open(target_file, 'w', encoding='utf-8') as f:
+        #         f.writelines(sampled_lines)
+            
+        #     logger.info(f"成功创建抽样初始种群文件: {target_file}")
+
+        # except Exception as e:
+        #     logger.error(f"创建抽样初始种群文件时出错: {e}")
+        #     raise
+
     def run_complete_workflow(self):
         """执行完整的GA工作流"""
-        logger.info(f"开始执行完整的GA工作流程 (输出目录: {self.output_dir})")        
-        # 第0步：初代种群处理
-        current_parents_docked_file = self.run_initial_generation()
-        if not current_parents_docked_file:
+        logger.info(f"开始执行完整的GA工作流程 (输出目录: {self.output_dir})")
+        
+        try:
+            self._prepare_initial_population()
+        except Exception as e:
+            logger.error(f"准备初始种群失败，工作流终止: {e}")
+            return False
+        
+        # 1. 准备初始种群文件
+        initial_docked_file = self.run_initial_generation()
+        if not initial_docked_file:
             logger.error("初代种群处理失败，工作流终止")
-            return False        
-        # 开始迭代
+            return False
+            
+        # 初始化当前父代文件
+        current_parents_docked_file = str(initial_docked_file)
+
+        # 主要的GA迭代循环
         for generation in range(1, self.max_generations + 1):
-            logger.info(f"----- 开始第 {generation} 代进化 -----")            
-            # 1. 从带分数的父代文件中提取纯SMILES用于遗传操作
-            gen_dir = self.output_dir / f"generation_{generation}"
-            gen_dir.mkdir(exist_ok=True)
-            parent_smiles_file = gen_dir / "selected_parent_smiles.smi"#从带分数的父代文件中提取纯SMILES用于遗传操作            
-            if not self._extract_smiles_from_docked_file(current_parents_docked_file, str(parent_smiles_file)):
-                logger.error(f"第{generation}代: 无法从父代文件提取SMILES,工作流终止")
-                return False            
-            # 2. 遗传操作 (使用纯SMILES文件)
-            crossover_file, mutation_file = self.run_genetic_operations(str(parent_smiles_file), generation)
-            if not crossover_file or not mutation_file:
-                logger.error(f"第{generation}代遗传操作失败，工作流终止")
-                return False            
-            # 3. 子代评估 (得到带分数的子代文件，但不进行评分分析)
-            offspring_docked_file = self.run_offspring_evaluation(crossover_file, mutation_file, generation)
-            # if not offspring_docked_file:
-            #     logger.error(f"第{generation}代子代评估失败，工作流终止")
-            #     return False            
-            # 4. 选择操作：从父代(带分数) + 子代(带分数)中选择下一代父代(带分数)
-            next_parents_docked_file = self.run_selection(current_parents_docked_file, offspring_docked_file, generation)
+            logger.info(f"开始第 {generation}/{self.max_generations} 代迭代...")
+            
+            # 2. 遗传操作 (交叉和突变)
+            offspring_files = self.run_genetic_operations(current_parents_docked_file, generation)
+            if not offspring_files:
+                logger.error(f"第 {generation} 代遗传操作失败，工作流终止。")
+                return False
+            
+            crossover_smiles_file, mutation_smiles_file = offspring_files
+            
+            # 3. 子代评估 (对接)
+            offspring_docked_file = self.run_offspring_evaluation(
+                str(crossover_smiles_file), str(mutation_smiles_file), generation
+            )
+            if not offspring_docked_file:
+                logger.error(f"第 {generation} 代子代评估失败，工作流终止。")
+                return False
+                
+            # 4. 选择
+            next_parents_docked_file = self.run_selection(
+                current_parents_docked_file, 
+                str(offspring_docked_file), 
+                generation
+            )
             if not next_parents_docked_file:
-                logger.error(f"第{generation}代选择操作失败，工作流终止")
-                return False            
-            # 5. 对选择后的精英种群进行评分分析
-            self.run_selected_population_evaluation(next_parents_docked_file, generation)            
-            # 更新父代文件，准备下一代 (现在是带分数的文件)
-            current_parents_docked_file = next_parents_docked_file            
+                logger.error(f"第 {generation} 代选择失败，工作流终止。")
+                return False
+
+            # 5. 对选择出的新父代进行评估分析
+            self.run_selected_population_evaluation(str(next_parents_docked_file), generation)
+            
+            # 更新当前父代，为下一次迭代做准备
+            current_parents_docked_file = next_parents_docked_file
             logger.info(f"第 {generation} 代进化完成")        
         logger.info("=" * 60)
         logger.info("GA工作流程全部完成!")

@@ -76,8 +76,10 @@ class GAGPTWorkflowExecutor:
         # 加载GA和GPT的核心参数
         self.max_generations = workflow_config.get('max_generations', 10)
         self.initial_population_file = workflow_config.get('initial_population_file')
+        self.population_size = workflow_config.get('population_size', 115)        
         self.run_params['max_generations'] = self.max_generations
         self.run_params['initial_population_file'] = self.initial_population_file
+        self.run_params['population_size'] = self.population_size
         # 记录选择模式
         selection_config = self.config.get('selection', {})
         self.run_params['selection_mode'] = selection_config.get('selection_mode', 'single_objective')
@@ -229,23 +231,38 @@ class GAGPTWorkflowExecutor:
         gen_dir = self.output_dir / f"generation_{generation}"
         gpt_output_dir = gen_dir / "gpt_generated"
         gpt_output_dir.mkdir(exist_ok=True)        
-        
+        # 注意: fragment_GPT/generate_all.py的输出是固定的，需要找到它
+        # 这里我们假设它输出到 'fragment_GPT/output/crossovered0_frags_new_{seed}.smi'
         gpt_config = self.config.get('gpt', {})
         seed = gpt_config.get('seed', generation) # 使用代数作为种子以保证可复现性        
-        
-        # 定义GPT输出文件路径，不再硬编码和移动文件
-        gpt_generated_file = gpt_output_dir / "gpt_generated_molecules.smi"
+        # 实际的GPT脚本输出路径
+        # TODO: 强烈建议将GPT脚本的输出路径改为通过命令行参数传递
+        gpt_script_output_dir = self.project_root / "fragment_GPT/output"
+        # 假设输出文件名格式，需要根据`generate_all.py`的实现来确定
+        expected_output_filename = f'crossovered0_frags_new_{seed}.smi'
+        expected_output_path = gpt_script_output_dir / expected_output_filename
+        # 执行前删除旧的输出文件，以确保我们得到的是本次运行的结果
+        if expected_output_path.exists():
+            expected_output_path.unlink()
         gpt_args = [
             '--input_file', masked_fragments_file,
-            '--seed', str(seed),
-            '--output_file', str(gpt_generated_file)  # 直接传递输出路径
-        ]
-
+            '--seed', str(seed)]
         if not self._run_script('fragment_GPT/generate_all.py', gpt_args):
             logger.error(f"第 {generation} 代: GPT生成脚本执行失败。")
             return None        
-
-        # 检查指定的输出文件是否已生成且不为空
+        # 检查预期的输出文件是否已生成
+        if not expected_output_path.exists():
+            logger.error(f"第 {generation} 代: GPT生成失败，未找到预期的输出文件: {expected_output_path}")
+            logger.error(f"请检查fragment_GPT脚本是否正常执行，以及输出目录 {gpt_script_output_dir} 是否存在")
+            return None            
+        # 将生成的文件移动到代数目录中并重命名
+        gpt_generated_file = gpt_output_dir / "gpt_generated_molecules.smi"
+        try:
+            import shutil
+            shutil.move(str(expected_output_path), str(gpt_generated_file))
+        except Exception as e:
+            logger.error(f"无法移动GPT生成的文件: {e}")
+            return None
         generated_count = self._count_molecules(str(gpt_generated_file))
         if generated_count == 0:
             logger.warning(f"第 {generation} 代: GPT生成了0个有效分子。")
@@ -434,13 +451,12 @@ class GAGPTWorkflowExecutor:
         elif selection_mode == 'multi_objective':
             logger.info("执行多目标选择...")
             multi_obj_config = selection_config.get('multi_objective_settings', {})
-            n_select = multi_obj_config.get('n_select', 100)
+            n_select = multi_obj_config.get('n_select', self.population_size)
             selection_args = [
                 '--docked_file', offspring_docked_file,
                 '--parent_file', parent_docked_file,
                 '--output_file', str(next_parents_file),
-                '--config_file', self.config_path,
-                '--n_select', str(n_select)  # 统一通过命令行传递
+                '--n_select', str(n_select)
             ]
             selection_succeeded = self._run_script('operations/selecting/selecting_multi_demo.py', selection_args)
         

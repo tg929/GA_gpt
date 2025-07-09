@@ -357,12 +357,17 @@ class DockingWorkflow:
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
         #配体文件查找
-        ligand_files = glob.glob(os.path.join(ligand_dir, "*.pdbqt"))          
-        num_workers = self.vars.get("number_of_processors")#决定使用CPU数目
-        if num_workers is None:            
-            num_workers = os.cpu_count() or 1 # 如果为null或未指定，则使用所有可用CPU核心
-        else:            
-            num_workers = int(num_workers) # 否则，使用指定数量
+        ligand_files = glob.glob(os.path.join(ligand_dir, "*.pdbqt"))
+        
+        # 核心数管理：优先使用配置值，否则回退到安全的默认值
+        num_workers = self.vars.get("number_of_processors")
+        if not isinstance(num_workers, int) or num_workers <= 0:
+            safe_default_cores = 4
+            logger.info(f"未在配置中指定有效CPU核心数, 或设置无效。将回退到安全默认值: {safe_default_cores}")
+            num_workers = safe_default_cores
+        else:
+            logger.info(f"使用配置文件中指定的CPU核心数: {num_workers}")
+
         print(f"将使用 {num_workers} 个CPU核心进行并行对接...")
         futures = [] #对接任务对象
         scores = {}

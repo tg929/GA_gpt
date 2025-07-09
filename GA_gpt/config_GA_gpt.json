@@ -8,7 +8,8 @@
   },  
   "workflow": {
     "description": "GA-GPT混合工作流核心参数",
-    "max_generations": 10,
+    "max_generations": 5,
+    "population_size": 115,
     "initial_population_file": "datasets/source_compounds/naphthalene_smiles.smi",
     "output_directory": "GA_GPT_output",
     "enable_gpt_generation": true,
@@ -250,7 +251,11 @@
         "Tournament_Selector"],
       "n_select": 100,
       "selector_choice": "Rank_Selector",
-      "tourn_size": 0.1
+      "tourn_size": 0.1,
+      "enable_dynamic_selection": false,
+      "dynamic_selection_transition_generation": 3,
+      "early_stage_selector": "Roulette_Selector",
+      "late_stage_selector": "Rank_Selector"
     },
     
     "multi_objective_settings": {
@@ -276,6 +281,13 @@
       "enable_crowding_distance": true,
       "verbose": false
     }
+  },
+  
+  "molecular_selection": {
+    "description": "兼容molecular_selection.py脚本的参数配置",
+    "n_select": 115,
+    "selector_choice": "Rank_Selector",
+    "tourn_size": 0.1
   },
   
   "fragmentation": {
